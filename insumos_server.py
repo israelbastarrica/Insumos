@@ -53,11 +53,19 @@ CREATE_TABLES = [
     """
     IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='InsumosUrgentes')
     CREATE TABLE InsumosUrgentes (
-        Codigo   NVARCHAR(30)  NOT NULL PRIMARY KEY,
-        Quien    NVARCHAR(100) NOT NULL DEFAULT '',
-        Cantidad INT           NOT NULL DEFAULT 0,
-        Fecha    NVARCHAR(50)  NOT NULL DEFAULT ''
+        Codigo    NVARCHAR(30)  NOT NULL PRIMARY KEY,
+        Quien     NVARCHAR(100) NOT NULL DEFAULT '',
+        Cantidad  INT           NOT NULL DEFAULT 0,
+        Fecha     NVARCHAR(50)  NOT NULL DEFAULT '',
+        Procesado BIT           NOT NULL DEFAULT 0
     )
+    """,
+    """
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID('InsumosUrgentes') AND name = 'Procesado'
+    )
+    ALTER TABLE InsumosUrgentes ADD Procesado BIT NOT NULL DEFAULT 0
     """,
     """
     IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='InsumosDesuso')
@@ -79,8 +87,16 @@ CREATE_TABLES = [
         Cantidad      INT           NOT NULL DEFAULT 0,
         FechaEntrega  VARCHAR(10)   NULL,
         Proveedor     NVARCHAR(200) NOT NULL DEFAULT '',
-        FechaRegistro DATETIME      NOT NULL DEFAULT GETDATE()
+        FechaRegistro DATETIME      NOT NULL DEFAULT GETDATE(),
+        Procesado     BIT           NOT NULL DEFAULT 0
     )
+    """,
+    """
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID('InsumosPedidos') AND name = 'Procesado'
+    )
+    ALTER TABLE InsumosPedidos ADD Procesado BIT NOT NULL DEFAULT 0
     """,
     """
     IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='InsumosNotas')
@@ -138,8 +154,8 @@ def load_shared():
     try:
         cur = conn.cursor()
 
-        cur.execute("SELECT Codigo, Quien, Cantidad, Fecha FROM InsumosUrgentes")
-        urgente = [{'cod': r[0], 'quien': r[1], 'cantidad': r[2], 'fecha': r[3]}
+        cur.execute("SELECT Codigo, Quien, Cantidad, Fecha, Procesado FROM InsumosUrgentes")
+        urgente = [{'cod': r[0], 'quien': r[1], 'cantidad': r[2], 'fecha': r[3], 'procesado': bool(r[4])}
                    for r in cur.fetchall()]
 
         cur.execute("SELECT Codigo FROM InsumosDesuso")
@@ -148,11 +164,11 @@ def load_shared():
         cur.execute("SELECT Codigo, StockMinimo FROM InsumosStockMinimo")
         stock_minimo = {r[0]: r[1] for r in cur.fetchall()}
 
-        cur.execute("SELECT Codigo, Cantidad, FechaEntrega, Proveedor FROM InsumosPedidos")
+        cur.execute("SELECT Codigo, Cantidad, FechaEntrega, Proveedor, Procesado FROM InsumosPedidos")
         rows = cur.fetchall()
         pedido_realizado = [r[0] for r in rows]
         pedido_info = {
-            r[0]: {'cantidad': r[1], 'fecha_entrega': r[2] or '', 'proveedor': r[3] or ''}
+            r[0]: {'cantidad': r[1], 'fecha_entrega': r[2] or '', 'proveedor': r[3] or '', 'procesado': bool(r[4])}
             for r in rows
         }
 
@@ -208,8 +224,9 @@ def save_patch(patch):
             for u in patch['urgente']:
                 if isinstance(u, dict):
                     cur.execute(
-                        "INSERT INTO InsumosUrgentes (Codigo,Quien,Cantidad,Fecha) VALUES (?,?,?,?)",
-                        u['cod'], u.get('quien', ''), u.get('cantidad', 0), u.get('fecha', '')
+                        "INSERT INTO InsumosUrgentes (Codigo,Quien,Cantidad,Fecha,Procesado) VALUES (?,?,?,?,?)",
+                        u['cod'], u.get('quien', ''), u.get('cantidad', 0), u.get('fecha', ''),
+                        1 if u.get('procesado') else 0
                     )
                 else:
                     cur.execute(
@@ -237,11 +254,12 @@ def save_patch(patch):
             for cod in patch['pedido_realizado']:
                 pi = info.get(cod, {})
                 cur.execute(
-                    "INSERT INTO InsumosPedidos (Codigo,Cantidad,FechaEntrega,Proveedor) VALUES (?,?,?,?)",
+                    "INSERT INTO InsumosPedidos (Codigo,Cantidad,FechaEntrega,Proveedor,Procesado) VALUES (?,?,?,?,?)",
                     cod,
                     pi.get('cantidad', 0),
                     pi.get('fecha_entrega') or None,
                     pi.get('proveedor', ''),
+                    1 if pi.get('procesado') else 0,
                 )
 
         if 'notas' in patch:
