@@ -15,7 +15,7 @@ from config import SERVER, DB_CENTRAL, USER, PASSWORD
 
 warnings.filterwarnings('ignore', category=UserWarning)
 
-OUTPUT = r'C:\INSUMOS\insumos.html'
+OUTPUT = r'C:\INSUMOS\index.html'
 
 UNIDADES_ESPECIALES = {
     'ZZ0000111': 'Pack x6',
