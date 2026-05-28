@@ -348,7 +348,10 @@ def after(resp):
 @app.route('/')
 @app.route('/insumos')
 def index():
-    return send_file(os.path.join(BASE_DIR, 'index.html'))
+    resp = send_file(os.path.join(BASE_DIR, 'index.html'))
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+    resp.headers['Pragma'] = 'no-cache'
+    return resp
 
 @app.route('/api/shared', methods=['OPTIONS'])
 def preflight():
