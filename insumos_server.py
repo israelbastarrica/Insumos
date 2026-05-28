@@ -348,7 +348,7 @@ def after(resp):
 @app.route('/')
 @app.route('/insumos')
 def index():
-    return send_file(os.path.join(BASE_DIR, 'insumos.html'))
+    return send_file(os.path.join(BASE_DIR, 'index.html'))
 
 @app.route('/api/shared', methods=['OPTIONS'])
 def preflight():
