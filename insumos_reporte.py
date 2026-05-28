@@ -728,6 +728,8 @@ const LS_KEY = 'insumos_shared_v2';
 let shared = {{ urgente:[], desuso:[], stock_minimo:{{}}, pedido_realizado:[], pedido_info:{{}}, notas:{{}}, solicitudes_cartones:[], historial:[] }};
 
 async function loadShared() {{
+  let lsData = {{}};
+  try {{ lsData = JSON.parse(localStorage.getItem(LS_KEY)||'{{}}'); }} catch(e) {{}}
   try {{
     const r = await fetch(SERVER+'/api/shared', {{signal: AbortSignal.timeout(2000)}});
     shared = await r.json();
@@ -739,8 +741,22 @@ async function loadShared() {{
     shared.solicitudes_cartones = shared.solicitudes_cartones || [];
     shared.historial            = shared.historial            || [];
     shared.pedido_info          = shared.pedido_info          || {{}};
+    // Si la DB no tiene stock_minimo pero localStorage sí, recuperarlo y guardarlo en DB
+    if (!Object.keys(shared.stock_minimo).length && Object.keys(lsData.stock_minimo||{{}}).length) {{
+      shared.stock_minimo = lsData.stock_minimo;
+      saveShared({{ stock_minimo: shared.stock_minimo }});
+    }}
+    // Mismo para desuso y notas
+    if (!shared.desuso.length && (lsData.desuso||[]).length) {{
+      shared.desuso = lsData.desuso;
+      saveShared({{ desuso: shared.desuso }});
+    }}
+    if (!Object.keys(shared.notas).length && Object.keys(lsData.notas||{{}}).length) {{
+      shared.notas = lsData.notas;
+      saveShared({{ notas: shared.notas }});
+    }}
   }} catch(e) {{
-    try {{ Object.assign(shared, JSON.parse(localStorage.getItem(LS_KEY)||'{{}}')); }} catch(e2) {{}}
+    Object.assign(shared, lsData);
   }}
 }}
 async function saveShared(patch) {{
