@@ -215,6 +215,7 @@ def load_shared():
 # ---------------------------------------------------------------------------
 
 def save_patch(patch):
+    conn = None
     conn = get_conn()
     try:
         cur = conn.cursor()
@@ -297,10 +298,13 @@ def save_patch(patch):
 
         conn.commit()
     except Exception:
-        conn.rollback()
+        if conn:
+            try: conn.rollback()
+            except: pass
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 # ---------------------------------------------------------------------------
 # Migración desde JSON (una sola vez, si las tablas están vacías)
@@ -309,12 +313,12 @@ def save_patch(patch):
 def migrate_from_json():
     if not os.path.exists(SHARED_FILE):
         return
+    conn = None
     try:
         conn = get_conn()
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM InsumosHistorial")
         tiene_datos = cur.fetchone()[0] > 0
-        conn.close()
         if tiene_datos:
             return   # ya hay datos en SQL, no reimportar
         with open(SHARED_FILE, 'r', encoding='utf-8') as f:
@@ -326,6 +330,9 @@ def migrate_from_json():
         print("  Migración desde JSON completada → insumos_shared.json.migrated")
     except Exception as e:
         print(f"  Advertencia migración: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 # ---------------------------------------------------------------------------
 # CORS

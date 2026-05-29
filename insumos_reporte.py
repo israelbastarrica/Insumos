@@ -359,6 +359,10 @@ tbody tr.row-critico:hover > td{{background:rgba(239,68,68,0.14)!important;}}
 .ppm-fecha-row input{{background:#111;border:1px solid #3a3a3a;color:#f0f0f0;padding:7px 10px;border-radius:4px;font-size:12px;}}
 .ppm-fecha-row input:focus{{outline:none;border-color:#22c55e;}}
 .ppm-btns{{display:flex;gap:10px;justify-content:flex-end;}}
+.ppm-field{{display:flex;flex-direction:column;gap:5px;margin-top:10px;padding-top:10px;border-top:1px solid #222;}}
+.ppm-field span{{font-size:10px;color:#555;letter-spacing:.5px;font-weight:700;}}
+.ppm-field input{{background:#111;border:1px solid #3a3a3a;color:#f0f0f0;padding:7px 10px;border-radius:4px;font-size:12px;}}
+.ppm-field input:focus{{outline:none;border-color:#22c55e;}}
 /* Botón descarga TXT */
 .btn-dl-txt{{background:#0a1e3a;border:1px solid #1a4a7a;color:#60a5fa;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:10px;font-weight:700;letter-spacing:.5px;}}
 .btn-dl-txt:hover{{background:#0d2a4a;border-color:#60a5fa;}}
@@ -490,6 +494,7 @@ tbody tr.pedido-vencido > td:first-child{{border-left:3px solid var(--err);}}
     </table>
   </div>
   <div class="pag" id="ins-pag"></div>
+  <div id="ins-pedido" class="pedido-sec"><div id="ins-pedido-content"></div></div>
 </div>
 
 <!-- ══ CARTONES ══ -->
@@ -546,6 +551,7 @@ tbody tr.pedido-vencido > td:first-child{{border-left:3px solid var(--err);}}
     </table>
   </div>
   <div class="pag" id="cart-pag"></div>
+  <div id="cart-pedido" class="pedido-sec"><div id="cart-pedido-content"></div></div>
 </div>
 
 <!-- ══ HISTORIAL ══ -->
@@ -928,7 +934,7 @@ function renderDesusoTables() {{
 }}
 
 // ── Tabs ──────────────────────────────────────────────────────
-let tabActual = 'ins';
+let tabActual = 'prov';
 function switchTab(id, btn) {{
   tabActual = id;
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -1239,8 +1245,8 @@ function renderHistorial() {{
       if (!grupoKeys[gk]) {{
         const rk = 'hg_' + (grupoIdx++);
         grupoKeys[gk] = rk;
-        const prov = e.proveedor || ((e.nota||'').match(/·\s*(.+)$/) || [])[1]?.trim() || '';
-        const fechaEnt = e.fechaEntrega || ((e.nota||'').match(/Entrega:\s*([\d-]+)/) || [])[1] || '';
+        const prov = e.proveedor || ((e.nota||'').match(/·\\s*(.+)$/) || [])[1]?.trim() || '';
+        const fechaEnt = e.fechaEntrega || ((e.nota||'').match(/Entrega:\\s*([\\d-]+)/) || [])[1] || '';
         _histGruposRender[rk] = {{ rk, tipo:e.tipo, fecha:e.fecha, prov, fechaEnt, items:[], ids:[] }};
         virtEntries.push({{ _tipo:'grupo', rk }});
       }}
