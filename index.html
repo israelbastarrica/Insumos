@@ -828,7 +828,7 @@ function confirmarPedido() {
   const art = [...DATASETS['ins'],...DATASETS['cart']].find(r=>r.Codigo===pedidoCod);
   const urgInfo = getUrgenteInfo(pedidoCod);
   (shared.pedido_realizado=shared.pedido_realizado||[]).push(pedidoCod);
-  (shared.pedido_info=shared.pedido_info||{})[pedidoCod] = {cantidad:cant, fecha_entrega:fecha};
+  (shared.pedido_info=shared.pedido_info||{})[pedidoCod] = {cantidad:cant, fecha_entrega:fecha, proveedor: art ? art.Proveedor : ''};
   addHistorial({
     tipo:'pedido', cod:pedidoCod,
     descripcion: art ? art.Descripcion : pedidoCod,
@@ -1853,7 +1853,8 @@ loadShared().then(() => {
 // ── Auto-refresh: sincronizar cambios de otros usuarios cada 30s ──
 setInterval(async () => {
   const snap = JSON.stringify({
-    u: shared.urgente, d: shared.desuso,
+    u: shared.urgente, d: shared.desuso, e: shared.esporadico,
+    po: shared.prov_orden, sm: shared.stock_minimo, n: shared.notas,
     p: shared.pedido_realizado, pi: shared.pedido_info,
     s: shared.solicitudes_cartones, h: shared.historial
   });
@@ -1861,7 +1862,8 @@ setInterval(async () => {
     const r = await fetch(SERVER+'/api/shared', {signal: AbortSignal.timeout(3000)});
     const nuevo = await r.json();
     const snap2 = JSON.stringify({
-      u: nuevo.urgente, d: nuevo.desuso,
+      u: nuevo.urgente, d: nuevo.desuso, e: nuevo.esporadico,
+      po: nuevo.prov_orden, sm: nuevo.stock_minimo, n: nuevo.notas,
       p: nuevo.pedido_realizado, pi: nuevo.pedido_info,
       s: nuevo.solicitudes_cartones, h: nuevo.historial
     });

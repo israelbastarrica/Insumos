@@ -315,8 +315,8 @@ def save_patch(patch):
                 cur.execute(
                     "INSERT INTO InsumosSolicitudesCartones "
                     "(ID,Descripcion,Codigo,Cantidad,Nota,Fecha,Atendido) VALUES (?,?,?,?,?,?,?)",
-                    s['id'], s['descripcion'], s.get('codigo', ''), s['cantidad'],
-                    s.get('nota', ''), s['fecha'], 1 if s.get('atendido') else 0
+                    s.get('id',''), s.get('descripcion',''), s.get('codigo', ''), s.get('cantidad',0),
+                    s.get('nota', ''), s.get('fecha',''), 1 if s.get('atendido') else 0
                 )
 
         if 'historial' in patch:
@@ -325,8 +325,8 @@ def save_patch(patch):
                 cur.execute(
                     "INSERT INTO InsumosHistorial "
                     "(ID,Tipo,Cod,Descripcion,Quien,Cantidad,Nota,Fecha) VALUES (?,?,?,?,?,?,?,?)",
-                    e['id'], e['tipo'], e.get('cod', ''), e.get('descripcion', ''),
-                    e.get('quien', ''), e.get('cantidad') or 0, e.get('nota', ''), e['fecha']
+                    e.get('id',''), e.get('tipo',''), e.get('cod', ''), e.get('descripcion', ''),
+                    e.get('quien', ''), e.get('cantidad') or 0, e.get('nota', ''), e.get('fecha','')
                 )
 
         conn.commit()
@@ -356,8 +356,8 @@ def migrate_from_json():
             return   # ya hay datos en SQL, no reimportar
         with open(SHARED_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        keys = ['urgente', 'desuso', 'stock_minimo', 'pedido_realizado',
-                'pedido_info', 'notas', 'solicitudes_cartones', 'historial']
+        keys = ['urgente', 'desuso', 'esporadico', 'prov_orden', 'stock_minimo',
+                'pedido_realizado', 'pedido_info', 'notas', 'solicitudes_cartones', 'historial']
         save_patch({k: data[k] for k in keys if k in data})
         os.rename(SHARED_FILE, SHARED_FILE + '.migrated')
         print("  Migración desde JSON completada → insumos_shared.json.migrated")
@@ -395,7 +395,7 @@ def index():
 
 @app.route('/api/shared', methods=['OPTIONS'])
 def preflight():
-    return _cors(Response(status=200))
+    return Response(status=200)
 
 @app.route('/api/shared', methods=['GET'])
 def get_shared():

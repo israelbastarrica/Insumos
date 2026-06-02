@@ -46,7 +46,7 @@ _cur = conn.cursor()
 _cur.execute("SELECT Valor FROM InsumosConfig WHERE Clave='remitos_excluir'")
 _row = _cur.fetchone()
 REMITOS_EXCLUIR = _json.loads(_row[0]) if _row and _row[0] else []
-_EXCLUIR_SQL = ','.join(str(x) for x in REMITOS_EXCLUIR) if REMITOS_EXCLUIR else '0'
+_EXCLUIR_SQL = ','.join(str(int(x)) for x in REMITOS_EXCLUIR) if REMITOS_EXCLUIR else '0'
 print(f"  Remitos excluidos: {REMITOS_EXCLUIR}")
 
 df_stock = pd.read_sql(f"""
@@ -212,10 +212,20 @@ print(f"  Insumos: {ki['n_arts']} arts | Cartones: {kc['n_arts']} arts")
 # 4. Serializar para JS
 # ---------------------------------------------------------------------------
 def clean(lst):
+    import math
     out = []
     for r in lst:
-        out.append({k: ('' if v is None or (isinstance(v, float) and str(v) == 'nan') else v)
-                    for k, v in r.items()})
+        row = {}
+        for k, v in r.items():
+            if v is None:
+                row[k] = ''
+            elif isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                row[k] = ''
+            elif hasattr(v, 'item'):  # numpy scalar → tipo Python nativo
+                row[k] = v.item()
+            else:
+                row[k] = v
+        out.append(row)
     return out
 
 j_ins   = json.dumps(clean(df_insumos.to_dict(orient='records')), ensure_ascii=False)
@@ -1058,7 +1068,7 @@ function confirmarPedido() {{
   const art = [...DATASETS['ins'],...DATASETS['cart']].find(r=>r.Codigo===pedidoCod);
   const urgInfo = getUrgenteInfo(pedidoCod);
   (shared.pedido_realizado=shared.pedido_realizado||[]).push(pedidoCod);
-  (shared.pedido_info=shared.pedido_info||{{}})[pedidoCod] = {{cantidad:cant, fecha_entrega:fecha}};
+  (shared.pedido_info=shared.pedido_info||{{}})[pedidoCod] = {{cantidad:cant, fecha_entrega:fecha, proveedor: art ? art.Proveedor : ''}};
   addHistorial({{
     tipo:'pedido', cod:pedidoCod,
     descripcion: art ? art.Descripcion : pedidoCod,
@@ -2083,7 +2093,8 @@ loadShared().then(() => {{
 // ── Auto-refresh: sincronizar cambios de otros usuarios cada 30s ──
 setInterval(async () => {{
   const snap = JSON.stringify({{
-    u: shared.urgente, d: shared.desuso,
+    u: shared.urgente, d: shared.desuso, e: shared.esporadico,
+    po: shared.prov_orden, sm: shared.stock_minimo, n: shared.notas,
     p: shared.pedido_realizado, pi: shared.pedido_info,
     s: shared.solicitudes_cartones, h: shared.historial
   }});
@@ -2091,7 +2102,8 @@ setInterval(async () => {{
     const r = await fetch(SERVER+'/api/shared', {{signal: AbortSignal.timeout(3000)}});
     const nuevo = await r.json();
     const snap2 = JSON.stringify({{
-      u: nuevo.urgente, d: nuevo.desuso,
+      u: nuevo.urgente, d: nuevo.desuso, e: nuevo.esporadico,
+      po: nuevo.prov_orden, sm: nuevo.stock_minimo, n: nuevo.notas,
       p: nuevo.pedido_realizado, pi: nuevo.pedido_info,
       s: nuevo.solicitudes_cartones, h: nuevo.historial
     }});
