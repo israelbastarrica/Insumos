@@ -759,7 +759,7 @@ const SERVER = (window.location.protocol === 'file:' || window.location.hostname
 
 // ── Datos compartidos (servidor + fallback localStorage) ─────
 const LS_KEY = 'insumos_shared_v2';
-let shared = {{ urgente:[], desuso:[], esporadico:[], stock_minimo:{{}}, pedido_realizado:[], pedido_info:{{}}, notas:{{}}, solicitudes_cartones:[], historial:[] }};
+let shared = {{ urgente:[], desuso:[], esporadico:[], prov_orden:[], stock_minimo:{{}}, pedido_realizado:[], pedido_info:{{}}, notas:{{}}, solicitudes_cartones:[], historial:[] }};
 
 async function loadShared() {{
   let lsData = {{}};
@@ -770,6 +770,7 @@ async function loadShared() {{
     shared.urgente          = shared.urgente          || [];
     shared.desuso           = shared.desuso           || [];
     shared.esporadico       = shared.esporadico       || [];
+    shared.prov_orden       = shared.prov_orden       || [];
     shared.stock_minimo     = shared.stock_minimo     || {{}};
     shared.pedido_realizado = shared.pedido_realizado || [];
     shared.notas            = shared.notas            || {{}};
@@ -1765,6 +1766,28 @@ function makeSection(id) {{
   return {{filtrar,toggleConsumo,sortBy,render,irPag,getFilt}};
 }}
 
+// ── Proveedores — orden fijo ───────────────────────────────────
+function togglePinProv(prov) {{
+  const orden = shared.prov_orden || [];
+  if (orden.includes(prov))
+    shared.prov_orden = orden.filter(p=>p!==prov);
+  else
+    shared.prov_orden = [...orden, prov];
+  saveShared({{ prov_orden: shared.prov_orden }});
+  renderProveedores();
+}}
+function moverProv(prov, dir) {{
+  const orden = [...(shared.prov_orden||[])];
+  const i = orden.indexOf(prov);
+  if (i<0) return;
+  const j = i+dir;
+  if (j<0 || j>=orden.length) return;
+  [orden[i], orden[j]] = [orden[j], orden[i]];
+  shared.prov_orden = orden;
+  saveShared({{ prov_orden: shared.prov_orden }});
+  renderProveedores();
+}}
+
 // ── Proveedores ───────────────────────────────────────────────
 function renderProveedores() {{
   const content = document.getElementById('prov-content');
@@ -1795,8 +1818,13 @@ function renderProveedores() {{
   let cards = Object.values(map).filter(g => g.pending.length>0 || g.ordered.length>0);
   const busLow = document.getElementById('prov-bus') ? document.getElementById('prov-bus').value.toLowerCase().trim() : '';
   if (busLow) cards = cards.filter(g => g.prov.toLowerCase().includes(busLow));
+  const orden = shared.prov_orden || [];
   cards.sort((a,b) => {{
-    const diff = critCnt(b)-critCnt(a);
+    const ia = orden.indexOf(a.prov), ib = orden.indexOf(b.prov);
+    if (ia>=0 && ib>=0) return ia-ib;          // ambos fijados: por posición
+    if (ia>=0) return -1;                       // solo a fijado: va primero
+    if (ib>=0) return 1;                        // solo b fijado: va primero
+    const diff = critCnt(b)-critCnt(a);         // resto: por críticos
     return diff!==0 ? diff : (b.pending.length+b.ordered.length)-(a.pending.length+a.ordered.length);
   }});
 
@@ -1829,10 +1857,22 @@ function renderProveedores() {{
           <button class="btn-llego" style="font-size:11px;padding:4px 12px;flex-shrink:0;" onclick="abrirModalLlegoGrp('${{provAttr}}','${{g.secId}}')">✓ Aceptar</button>
         </div>`;
     }}
+    const isPinned = orden.includes(g.prov);
+    const pinIdx   = orden.indexOf(g.prov);
+    const pinBtns  = `
+      <div style="display:flex;gap:4px;align-items:center;margin-left:auto;">
+        ${{isPinned && pinIdx>0 ? `<button onclick="moverProv('${{provAttr}}',-1)" title="Subir" style="background:none;border:none;color:#555;cursor:pointer;font-size:13px;padding:0 3px;">▲</button>` : ''}}
+        ${{isPinned && pinIdx<orden.length-1 ? `<button onclick="moverProv('${{provAttr}}',1)" title="Bajar" style="background:none;border:none;color:#555;cursor:pointer;font-size:13px;padding:0 3px;">▼</button>` : ''}}
+        <button onclick="togglePinProv('${{provAttr}}')" title="${{isPinned?'Quitar de favoritos':'Fijar arriba'}}"
+          style="background:none;border:none;cursor:pointer;font-size:15px;padding:0 2px;opacity:${{isPinned?'1':'.35'}};">📌</button>
+      </div>`;
     html += `<div class="prov-card">
-      <div>
-        <div class="prov-card-name" title="${{g.prov}}">${{g.prov}}</div>
-        <span class="prov-card-sec ${{secCls}}">${{secLabel}}</span>
+      <div style="display:flex;align-items:flex-start;gap:4px;">
+        <div>
+          <div class="prov-card-name" title="${{g.prov}}">${{g.prov}}</div>
+          <span class="prov-card-sec ${{secCls}}">${{secLabel}}</span>
+        </div>
+        ${{pinBtns}}
       </div>
       <div class="prov-card-stats">
         <div class="prov-card-stat">
@@ -1944,6 +1984,7 @@ async function syncManual() {{
     shared.urgente          = shared.urgente          || [];
     shared.desuso           = shared.desuso           || [];
     shared.esporadico       = shared.esporadico       || [];
+    shared.prov_orden       = shared.prov_orden       || [];
     shared.stock_minimo     = shared.stock_minimo     || {{}};
     shared.pedido_realizado = shared.pedido_realizado || [];
     shared.pedido_info      = shared.pedido_info      || {{}};
@@ -2048,6 +2089,7 @@ setInterval(async () => {{
     shared.urgente          = shared.urgente          || [];
     shared.desuso           = shared.desuso           || [];
     shared.esporadico       = shared.esporadico       || [];
+    shared.prov_orden       = shared.prov_orden       || [];
     shared.stock_minimo     = shared.stock_minimo     || {{}};
     shared.pedido_realizado = shared.pedido_realizado || [];
     shared.pedido_info      = shared.pedido_info      || {{}};
