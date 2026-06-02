@@ -74,6 +74,12 @@ CREATE_TABLES = [
     )
     """,
     """
+    IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='InsumosEsporadico')
+    CREATE TABLE InsumosEsporadico (
+        Codigo NVARCHAR(30) NOT NULL PRIMARY KEY
+    )
+    """,
+    """
     IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name='InsumosStockMinimo')
     CREATE TABLE InsumosStockMinimo (
         Codigo      NVARCHAR(30) NOT NULL PRIMARY KEY,
@@ -161,6 +167,9 @@ def load_shared():
         cur.execute("SELECT Codigo FROM InsumosDesuso")
         desuso = [r[0] for r in cur.fetchall()]
 
+        cur.execute("SELECT Codigo FROM InsumosEsporadico")
+        esporadico = [r[0] for r in cur.fetchall()]
+
         cur.execute("SELECT Codigo, StockMinimo FROM InsumosStockMinimo")
         stock_minimo = {r[0]: r[1] for r in cur.fetchall()}
 
@@ -200,6 +209,7 @@ def load_shared():
         return {
             'urgente': urgente,
             'desuso': desuso,
+            'esporadico': esporadico,
             'stock_minimo': stock_minimo,
             'pedido_realizado': pedido_realizado,
             'pedido_info': pedido_info,
@@ -238,6 +248,11 @@ def save_patch(patch):
             cur.execute("DELETE FROM InsumosDesuso")
             for cod in patch['desuso']:
                 cur.execute("INSERT INTO InsumosDesuso (Codigo) VALUES (?)", cod)
+
+        if 'esporadico' in patch:
+            cur.execute("DELETE FROM InsumosEsporadico")
+            for cod in patch['esporadico']:
+                cur.execute("INSERT INTO InsumosEsporadico (Codigo) VALUES (?)", cod)
 
         if 'stock_minimo' in patch:
             for cod, val in patch['stock_minimo'].items():

@@ -287,6 +287,8 @@ tbody tr.pedido-done td{{opacity:.5;}}
 /* Desuso */
 .desuso-toggle{{background:#1a1a1a;border:1px solid var(--border);color:#555;padding:5px 12px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:700;}}
 .desuso-toggle:hover{{border-color:#555;color:var(--muted);}}
+/* Esporádico */
+.badge-esp{{display:inline-block;background:#1a1a0a;color:#a0a000;font-size:8px;font-weight:900;padding:1px 5px;border-radius:2px;letter-spacing:.5px;margin-left:5px;vertical-align:middle;border:1px solid #3a3a00;}}
 .desuso-section{{padding:8px 24px 16px;border-top:1px solid #1e1e1e;display:none;}}
 .desuso-section.open{{display:block;}}
 .desuso-section table{{opacity:.5;}}
@@ -437,6 +439,7 @@ tbody tr.pedido-vencido > td:first-child{{border-left:3px solid var(--err);}}
 <div id="ctx-menu">
   <button onclick="ctxToggleUrgente()">⚡ <span id="ctx-urg-lbl">Marcar como URGENTE</span></button>
   <button onclick="ctxToggleDesuso()">🗑 <span id="ctx-des-lbl">Enviar a desuso</span></button>
+  <button onclick="ctxToggleEsporadico()">🔀 <span id="ctx-esp-lbl">Marcar como esporádico</span></button>
 </div>
 
 <!-- Modal urgente -->
@@ -727,6 +730,7 @@ tbody tr.pedido-vencido > td:first-child{{border-left:3px solid var(--err);}}
     </div>
     <div class="ppm-btns">
       <button class="urg-mcancel" style="margin-right:auto;" onclick="resetCantidadesPedido()">✕ Todo en 0</button>
+      <button id="ppm-btn-esp" class="urg-mcancel" style="display:none;color:#a0a000;border-color:#3a3a00;" onclick="toggleEsporadicosModal()"></button>
       <button class="urg-mcancel" onclick="cerrarModalPedidoProv()">Cancelar</button>
       <button class="urg-mconfirm" style="background:#0a1e0a;border-color:#22c55e;color:#22c55e;" onclick="confirmarPedidoProv()">📦 CONFIRMAR PEDIDO</button>
     </div>
@@ -755,7 +759,7 @@ const SERVER = (window.location.protocol === 'file:' || window.location.hostname
 
 // ── Datos compartidos (servidor + fallback localStorage) ─────
 const LS_KEY = 'insumos_shared_v2';
-let shared = {{ urgente:[], desuso:[], stock_minimo:{{}}, pedido_realizado:[], pedido_info:{{}}, notas:{{}}, solicitudes_cartones:[], historial:[] }};
+let shared = {{ urgente:[], desuso:[], esporadico:[], stock_minimo:{{}}, pedido_realizado:[], pedido_info:{{}}, notas:{{}}, solicitudes_cartones:[], historial:[] }};
 
 async function loadShared() {{
   let lsData = {{}};
@@ -765,6 +769,7 @@ async function loadShared() {{
     shared = await r.json();
     shared.urgente          = shared.urgente          || [];
     shared.desuso           = shared.desuso           || [];
+    shared.esporadico       = shared.esporadico       || [];
     shared.stock_minimo     = shared.stock_minimo     || {{}};
     shared.pedido_realizado = shared.pedido_realizado || [];
     shared.notas            = shared.notas            || {{}};
@@ -776,10 +781,14 @@ async function loadShared() {{
       shared.stock_minimo = lsData.stock_minimo;
       saveShared({{ stock_minimo: shared.stock_minimo }});
     }}
-    // Mismo para desuso y notas
+    // Mismo para desuso, esporadico y notas
     if (!shared.desuso.length && (lsData.desuso||[]).length) {{
       shared.desuso = lsData.desuso;
       saveShared({{ desuso: shared.desuso }});
+    }}
+    if (!shared.esporadico.length && (lsData.esporadico||[]).length) {{
+      shared.esporadico = lsData.esporadico;
+      saveShared({{ esporadico: shared.esporadico }});
     }}
     if (!Object.keys(shared.notas).length && Object.keys(lsData.notas||{{}}).length) {{
       shared.notas = lsData.notas;
@@ -854,6 +863,7 @@ document.addEventListener('contextmenu', e => {{
   ctxCod = row.dataset.cod;
   document.getElementById('ctx-urg-lbl').textContent = isUrgente(ctxCod) ? 'Quitar urgente' : 'Marcar como URGENTE';
   document.getElementById('ctx-des-lbl').textContent = (shared.desuso||[]).includes(ctxCod) ? 'Quitar de desuso' : 'Enviar a desuso';
+  document.getElementById('ctx-esp-lbl').textContent = (shared.esporadico||[]).includes(ctxCod) ? 'Quitar de esporádicos' : 'Marcar como esporádico';
   ctxMenu.style.display = 'block';
   ctxMenu.style.left = Math.min(e.pageX, window.innerWidth-210)+'px';
   ctxMenu.style.top  = Math.min(e.pageY, window.innerHeight-80)+'px';
@@ -929,6 +939,15 @@ function ctxToggleDesuso() {{
   }}
   saveShared({{ desuso: shared.desuso, urgente: shared.urgente }});
   S.ins.filtrar(); S.cart.filtrar(); renderDesusoTables(); actualizarBadgesUrgente();
+}}
+function ctxToggleEsporadico() {{
+  if (!ctxCod) return;
+  if ((shared.esporadico||[]).includes(ctxCod))
+    shared.esporadico = shared.esporadico.filter(c=>c!==ctxCod);
+  else
+    (shared.esporadico = shared.esporadico||[]).push(ctxCod);
+  saveShared({{ esporadico: shared.esporadico }});
+  S.ins.filtrar(); S.cart.filtrar();
 }}
 
 // ── Desuso panel ──────────────────────────────────────────────
@@ -1058,20 +1077,40 @@ function onCheckProveedor(e, el, secId) {{
   pedirProveedor(el.dataset.prov, secId);
 }}
 
+let _mostrarEsporadicos = false;
 function pedirProveedor(prov, secId) {{
+  _mostrarEsporadicos = false;
+  _renderModalPedido(prov, secId);
+}}
+function toggleEsporadicosModal() {{
+  _mostrarEsporadicos = !_mostrarEsporadicos;
+  const {{ prov, secId }} = pedidoProvData;
+  _renderModalPedido(prov, secId);
+}}
+function _renderModalPedido(prov, secId) {{
   const todos = (DATASETS[secId]||[]).filter(r =>
     r.Proveedor === prov &&
     !(shared.desuso||[]).includes(r.Codigo)
   );
-  // conCons: tiene cualquier consumo (MSTOCK o histórico)
-  // sinCons: sin ningún consumo registrado
   const tieneConsumo = r => r.ConsumidoDesdeIngreso > 0 || (r.ConsumidoDesdeIngreso < 0 && r.Consumido > 0);
-  const conCons = todos.filter(r => tieneConsumo(r));
-  const sinCons = todos.filter(r => !tieneConsumo(r));
+  const esEsp = r => (shared.esporadico||[]).includes(r.Codigo);
+  const visibles = todos.filter(r => _mostrarEsporadicos || !esEsp(r));
+  const espCnt = todos.filter(r => esEsp(r)).length;
+  const conCons = visibles.filter(r => tieneConsumo(r));
+  const sinCons = visibles.filter(r => !tieneConsumo(r));
   const arts = [...conCons, ...sinCons];
-  if (!arts.length) return;
   pedidoProvData = {{ prov, secId, arts }};
   document.getElementById('ppm-prov').textContent = prov;
+  // Botón esporádicos
+  const btnEsp = document.getElementById('ppm-btn-esp');
+  if (btnEsp) {{
+    if (espCnt > 0) {{
+      btnEsp.style.display = '';
+      btnEsp.textContent = _mostrarEsporadicos ? `Ocultar esporádicos (${{espCnt}})` : `+ Ver esporádicos (${{espCnt}})`;
+    }} else {{
+      btnEsp.style.display = 'none';
+    }}
+  }}
   let tbodyHtml = '';
   let separadorPuesto = false;
   arts.forEach(r => {{
@@ -1083,6 +1122,7 @@ function pedirProveedor(prov, secId) {{
     const cantAuto = r.ConsumidoDesdeIngreso > 0 ? r.ConsumidoDesdeIngreso : '';
     const stminBadge = (stmin > 0 && r.StockActual < stmin)
       ? `<span style="font-size:9px;color:var(--err);margin-left:4px;">▼mín ${{stmin}}</span>` : '';
+    const espBadge = esEsp(r) ? `<span class="badge-esp">ESP</span>` : '';
     const dimStyle = !tieneConsumo(r) ? 'opacity:.45;' : '';
     const yaPedido = (shared.pedido_realizado||[]).includes(r.Codigo);
     const cantPrev = yaPedido ? ((shared.pedido_info||{{}})[r.Codigo]?.cantidad ?? '') : '';
@@ -1092,12 +1132,12 @@ function pedirProveedor(prov, secId) {{
     const rowColor = yaPedido ? 'color:#60a5fa;' : '';
     tbodyHtml += `<tr style="${{dimStyle}}${{rowColor}}">
       <td style="color:#555;font-size:10px">${{r.Codigo}}</td>
-      <td>${{r.Descripcion}}${{stminBadge}}${{yaBadge}}</td>
+      <td>${{r.Descripcion}}${{espBadge}}${{stminBadge}}${{yaBadge}}</td>
       <td style="text-align:right"><input class="ppm-cant" type="number" min="0" value="${{cantAuto}}" data-orig="${{cantAuto}}" oninput="onPpmCantChange(this)" id="ppm-c-${{r.Codigo}}"></td>
     </tr>`;
   }});
   document.getElementById('ppm-tbody').innerHTML = tbodyHtml;
-  document.getElementById('ppm-fecha').value = '';
+  document.getElementById('ppm-fecha').value = document.getElementById('ppm-fecha').value || '';
   document.getElementById('pedido-prov-modal').classList.add('open');
 }}
 
@@ -1689,7 +1729,7 @@ function makeSection(id) {{
       const ingresadoBadge = r.UltimoIngreso===HOY?`<span class="badge-ingresado">↑ INGRESADO HOY</span>`:'';
       html+=`<tr data-cod="${{r.Codigo}}" class="${{rowCls}}">
         <td style="font-size:11px;color:#aaa">${{r.Codigo}}</td>
-        <td>${{r.Descripcion}}${{urgBadge}}${{ingresadoBadge}}</td>
+        <td>${{r.Descripcion}}${{urgBadge}}${{ingresadoBadge}}${{(shared.esporadico||[]).includes(r.Codigo)?'<span class="badge-esp">ESP</span>':''}}</td>
         <td><span class="unidad-cell" contenteditable="true" spellcheck="false" data-cod="${{r.Codigo}}" data-field="unidad">${{r.Unidad}}</span></td>
         <td class="num" title="${{r.ConsumidoDesdeIngreso>=0?'Desde último ingreso MSTOCK':'Sin ingreso registrado en MSTOCK'}}">
           ${{r.ConsumidoDesdeIngreso>0
@@ -1903,6 +1943,7 @@ async function syncManual() {{
     Object.assign(shared, nuevo);
     shared.urgente          = shared.urgente          || [];
     shared.desuso           = shared.desuso           || [];
+    shared.esporadico       = shared.esporadico       || [];
     shared.stock_minimo     = shared.stock_minimo     || {{}};
     shared.pedido_realizado = shared.pedido_realizado || [];
     shared.pedido_info      = shared.pedido_info      || {{}};
@@ -2006,6 +2047,7 @@ setInterval(async () => {{
     Object.assign(shared, nuevo);
     shared.urgente          = shared.urgente          || [];
     shared.desuso           = shared.desuso           || [];
+    shared.esporadico       = shared.esporadico       || [];
     shared.stock_minimo     = shared.stock_minimo     || {{}};
     shared.pedido_realizado = shared.pedido_realizado || [];
     shared.pedido_info      = shared.pedido_info      || {{}};
