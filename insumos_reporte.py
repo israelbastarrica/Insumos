@@ -40,6 +40,15 @@ conn = pyodbc.connect(
     timeout=30
 )
 
+# Remitos excluidos del cálculo de consumo (errores corregidos manualmente)
+import json as _json
+_cur = conn.cursor()
+_cur.execute("SELECT Valor FROM InsumosConfig WHERE Clave='remitos_excluir'")
+_row = _cur.fetchone()
+REMITOS_EXCLUIR = _json.loads(_row[0]) if _row and _row[0] else []
+_EXCLUIR_SQL = ','.join(str(x) for x in REMITOS_EXCLUIR) if REMITOS_EXCLUIR else '0'
+print(f"  Remitos excluidos: {REMITOS_EXCLUIR}")
+
 df_stock = pd.read_sql(f"""
     SELECT RTRIM(C.COART) AS Codigo, SUM(C.COCANT) AS StockActual
     FROM {DB_CENTRAL}.Zoologic.COMB C
@@ -123,6 +132,7 @@ df_mstock = pd.read_sql(f"""
           AND RTRIM(CV.MOTIVO) = '13'
           AND CV.ANULADO = 0
           AND LEFT(RTRIM(CVD.FART), 2) = 'ZZ'
+          AND CV.FNUMCOMP NOT IN ({_EXCLUIR_SQL})
         GROUP BY RTRIM(CVD.FART)
     ),
     totales AS (
