@@ -101,6 +101,7 @@ df_mstock = pd.read_sql(f"""
         INNER JOIN {DB_CENTRAL}.Zoologic.DETMSTOCK D ON M.CODIGO = D.NUMR
         WHERE RTRIM(M.MOTIVO) = '13' AND M.DIRMOV = 1
           AND LEFT(RTRIM(D.MART), 2) = 'ZZ'
+          AND UPPER(RTRIM(M.ORIGDEST)) NOT IN ('LURO','PERALTA','TALCA')
         GROUP BY RTRIM(D.MART)
     ),
     salidas_mstock AS (
