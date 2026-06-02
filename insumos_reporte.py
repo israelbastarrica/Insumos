@@ -89,7 +89,10 @@ df_art = pd.read_sql(f"""
 print(f"  Articulos ZZ* en ART: {len(df_art)}")
 
 # ---------------------------------------------------------------------------
-# 4. Consumo desde último ingreso (MSTOCK motivo 13, DIRMOV 1=entrada 2=salida)
+# 4. Consumo desde último ingreso
+#    Fuente 1: MSTOCK motivo 13 DIRMOV=2 (consumos internos / ajustes)
+#    Fuente 2: COMPROBANTEV FLETRA=R MOTIVO=13 (remitos de venta a locales)
+#    Ingreso de referencia: MSTOCK motivo 13 DIRMOV=1 (entrada de mercadería)
 # ---------------------------------------------------------------------------
 df_mstock = pd.read_sql(f"""
     WITH ultimos_ingresos AS (
@@ -100,21 +103,42 @@ df_mstock = pd.read_sql(f"""
           AND LEFT(RTRIM(D.MART), 2) = 'ZZ'
         GROUP BY RTRIM(D.MART)
     ),
-    salidas AS (
-        SELECT RTRIM(D.MART) AS Codigo, SUM(D.CANTI) AS ConsumidoDesdeIngreso
+    salidas_mstock AS (
+        SELECT RTRIM(D.MART) AS Codigo, SUM(D.CANTI) AS Cantidad
         FROM {DB_CENTRAL}.Zoologic.MSTOCK M
         INNER JOIN {DB_CENTRAL}.Zoologic.DETMSTOCK D ON M.CODIGO = D.NUMR
         INNER JOIN ultimos_ingresos UI ON RTRIM(D.MART) = UI.Codigo
                                      AND M.FECHA > UI.UltimoIngreso
         WHERE RTRIM(M.MOTIVO) = '13' AND M.DIRMOV = 2
         GROUP BY RTRIM(D.MART)
+    ),
+    salidas_remitos AS (
+        SELECT RTRIM(CVD.FART) AS Codigo, SUM(CVD.FCANT) AS Cantidad
+        FROM {DB_CENTRAL}.Zoologic.COMPROBANTEV CV
+        INNER JOIN {DB_CENTRAL}.Zoologic.COMPROBANTEVDET CVD ON CV.CODIGO = CVD.CODIGO
+        INNER JOIN ultimos_ingresos UI ON RTRIM(CVD.FART) = UI.Codigo
+                                     AND CAST(CV.FFCH AS DATE) > UI.UltimoIngreso
+        WHERE CV.FLETRA = 'R'
+          AND RTRIM(CV.MOTIVO) = '13'
+          AND CV.ANULADO = 0
+          AND LEFT(RTRIM(CVD.FART), 2) = 'ZZ'
+        GROUP BY RTRIM(CVD.FART)
+    ),
+    totales AS (
+        SELECT Codigo, SUM(Cantidad) AS ConsumidoDesdeIngreso
+        FROM (
+            SELECT Codigo, Cantidad FROM salidas_mstock
+            UNION ALL
+            SELECT Codigo, Cantidad FROM salidas_remitos
+        ) x
+        GROUP BY Codigo
     )
     SELECT UI.Codigo,
            CONVERT(varchar(10), UI.UltimoIngreso, 120)   AS UltimoIngreso,
-           ISNULL(S.ConsumidoDesdeIngreso, 0)             AS ConsumidoDesdeIngreso,
+           ISNULL(T.ConsumidoDesdeIngreso, 0)             AS ConsumidoDesdeIngreso,
            DATEDIFF(day, UI.UltimoIngreso, GETDATE())     AS DiasDesdeIngreso
     FROM ultimos_ingresos UI
-    LEFT JOIN salidas S ON UI.Codigo = S.Codigo
+    LEFT JOIN totales T ON UI.Codigo = T.Codigo
 """, conn)
 conn.close()
 print(f"  Artículos con ingreso MSTOCK: {len(df_mstock)}")
