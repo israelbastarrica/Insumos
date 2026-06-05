@@ -157,15 +157,11 @@ print(f"  Artículos con ingreso MSTOCK: {len(df_mstock)}")
 # ---------------------------------------------------------------------------
 # 5. Merge y limpieza
 # ---------------------------------------------------------------------------
-# Garantizar que artículos de inclusión forzada estén presentes aunque no
-# aparezcan en COMB ni en consumo
-codigos_forzar = CODIGOS_SIEMPRE_INCLUIR | CODIGOS_CARTON_EXTRA
-forzados = df_art[df_art['Codigo'].isin(codigos_forzar)][['Codigo']].copy()
-df_stock_ext = pd.concat([df_stock, forzados], ignore_index=True).drop_duplicates('Codigo')
-
-df = df_stock_ext.merge(df_consumo, on='Codigo', how='outer')
-df = df.merge(df_art, on='Codigo', how='left')
-df = df.merge(df_mstock, on='Codigo', how='left')
+# Base: todos los artículos ZZ* del maestro ART, luego enriquecer con stock/consumo
+df = df_art.copy()
+df = df.merge(df_stock,   on='Codigo', how='left')
+df = df.merge(df_consumo, on='Codigo', how='left')
+df = df.merge(df_mstock,  on='Codigo', how='left')
 
 df['Descripcion']           = df['Descripcion'].fillna(df['Codigo'])
 df['Proveedor']             = df['Proveedor'].fillna('SIN PROVEEDOR')
@@ -184,7 +180,18 @@ def _cpd(r):
 df['ConsumoPromDiario'] = df.apply(_cpd, axis=1)
 
 in_comb = set(df_stock['Codigo'].tolist())
-df = df[(df['Consumido'] > 0) | (df['StockActual'] > 0) | df['Codigo'].isin(in_comb) | df['Codigo'].isin(CODIGOS_CARTON_EXTRA) | df['Codigo'].isin(CODIGOS_SIEMPRE_INCLUIR)].copy()
+
+# Proveedores "activos": tienen al menos un artículo con stock o consumo registrado
+provs_activos = set(df[
+    (df['Consumido'] > 0) | (df['StockActual'] > 0) | df['Codigo'].isin(in_comb)
+]['Proveedor'].tolist()) - {'SIN PROVEEDOR'}
+
+# Incluir artículos con actividad propia + todos los de proveedores activos (sin actividad aparecen dimmed)
+df = df[
+    (df['Consumido'] > 0) | (df['StockActual'] > 0) | df['Codigo'].isin(in_comb) |
+    df['Codigo'].isin(CODIGOS_CARTON_EXTRA) | df['Codigo'].isin(CODIGOS_SIEMPRE_INCLUIR) |
+    df['Proveedor'].isin(provs_activos)
+].copy()
 df = df.sort_values(['Proveedor', 'Codigo']).reset_index(drop=True)
 df = df[['Proveedor', 'Codigo', 'Descripcion', 'Unidad', 'Consumido', 'StockActual',
          'ConsumidoDesdeIngreso', 'DiasDesdeIngreso', 'UltimoIngreso', 'ConsumoPromDiario']]
@@ -287,7 +294,9 @@ tbody tr.urg-row{{background:#1a0808!important;border-left:3px solid var(--err);
 tbody tr.urg-row:hover:not(.group-row){{background:#220a0a!important;}}
 .badge-urg{{display:inline-block;background:#2e0808;color:var(--err);font-size:9px;font-weight:700;padding:1px 5px;border-radius:2px;letter-spacing:.5px;margin-left:5px;vertical-align:middle;}}
 /* Pedido realizado */
-tbody tr.pedido-done td{{opacity:.5;}}
+tbody tr.pedido-done > td{{background:rgba(34,197,94,0.07)!important;}}
+tbody tr.pedido-done > td:first-child{{border-left:3px solid #22c55e;}}
+tbody tr.pedido-done:hover > td{{background:rgba(34,197,94,0.12)!important;}}
 /* Celdas editables */
 .unidad-cell{{color:#aaa;font-style:italic;cursor:text;border-radius:3px;padding:2px 4px;min-width:60px;display:inline-block;}}
 .unidad-cell:focus{{outline:1px solid var(--accent);color:var(--text);font-style:normal;background:#1e1e1e;}}
@@ -393,14 +402,15 @@ tbody tr.row-critico:hover > td{{background:rgba(239,68,68,0.14)!important;}}
 #pedido-prov-modal.open{{display:flex;}}
 #llego-grp-modal{{display:none;position:fixed;inset:0;z-index:10000;background:#0009;align-items:center;justify-content:center;}}
 #llego-grp-modal.open{{display:flex;}}
-.ppm-box{{background:#1a1a1a;border:1px solid #1a3a1a;border-radius:8px;padding:24px 28px;min-width:480px;max-width:680px;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 8px 32px #000d;}}
+.ppm-box{{background:#1a1a1a;border:1px solid #1a3a1a;border-radius:8px;padding:24px 28px;min-width:900px;max-width:1200px;width:92vw;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 8px 32px #000d;}}
 .ppm-title{{font-family:"Arial Black",Arial,sans-serif;font-weight:900;font-size:13px;color:#22c55e;letter-spacing:.5px;margin-bottom:4px;}}
 .ppm-sub{{color:var(--muted);font-size:11px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #222;}}
 .ppm-scroll{{overflow-y:auto;flex:1;margin-bottom:12px;border:1px solid #222;border-radius:4px;}}
 .ppm-scroll table{{width:100%;border-collapse:collapse;}}
-.ppm-scroll th{{font-size:10px;color:#555;letter-spacing:.5px;padding:5px 10px;text-align:left;position:sticky;top:0;background:#111;border-bottom:1px solid #222;font-weight:700;}}
-.ppm-scroll td{{padding:6px 10px;border-bottom:1px solid #1a1a1a;font-size:12px;}}
-.ppm-cant{{background:#111;border:1px solid #333;color:#eee;padding:4px 8px;border-radius:3px;width:80px;text-align:right;font-size:12px;}}
+.ppm-scroll th{{font-size:10px;color:#999;letter-spacing:.5px;padding:7px 10px;text-align:left;position:sticky;top:0;background:#1e1e1e;border-bottom:1px solid #3a3a3a;font-weight:700;}}
+.ppm-scroll td{{padding:8px 10px;border-bottom:1px solid #242424;font-size:12px;color:#e0e0e0;}}
+.ppm-cant{{background:#1a1a1a;border:1px solid #555;color:#f0f0f0;padding:5px 8px;border-radius:3px;width:80px;text-align:right;font-size:12px;}}
+.ppm-cant:focus{{outline:none;border-color:var(--accent);background:#222;}}
 .ppm-cant:focus{{outline:none;border-color:var(--accent);}}
 .ppm-fecha-row{{display:flex;align-items:center;gap:10px;font-size:11px;color:#555;letter-spacing:.5px;font-weight:700;margin-bottom:14px;}}
 .ppm-fecha-row input{{background:#111;border:1px solid #3a3a3a;color:#f0f0f0;padding:7px 10px;border-radius:4px;font-size:12px;}}
@@ -419,7 +429,7 @@ tbody tr.row-critico:hover > td{{background:rgba(239,68,68,0.14)!important;}}
 .pedido-prov-hdr-name{{font-size:10px;font-weight:700;color:#3a6a3a;letter-spacing:.5px;}}
 /* Grilla de proveedores */
 .prov-grid{{display:flex;gap:12px;padding:16px 24px;flex-wrap:wrap;}}
-.prov-card{{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px 18px;width:230px;display:flex;flex-direction:column;gap:10px;}}
+.prov-card{{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px 18px;width:290px;display:flex;flex-direction:column;gap:10px;}}
 .prov-card-name{{font-family:"Arial Black",Arial,sans-serif;font-weight:900;font-size:12px;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
 .prov-card-sec{{font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:2px;display:inline-block;margin-top:3px;}}
 .prov-card-sec.ins{{background:#0d1a2e;color:#60a5fa;}}
@@ -452,6 +462,11 @@ tbody tr.pedido-vencido > td:first-child{{border-left:3px solid var(--err);}}
 .btn-ver-detalle:hover{{border-color:#aaa;color:#aaa;}}
 /* Badge pedido activo en card */
 .prov-card-pedido{{background:#071207;border:1px solid #1a3a1a;border-radius:4px;padding:5px 8px;font-size:10px;color:#22c55e;font-weight:700;}}
+/* Modal historial proveedor */
+#hist-prov-modal{{display:none;position:fixed;inset:0;z-index:10000;background:#0009;align-items:center;justify-content:center;}}
+#hist-prov-modal.open{{display:flex;}}
+.btn-historial{{background:#1a1a2e;border:1px solid #2a2a5a;color:#818cf8;padding:7px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:700;letter-spacing:.5px;text-align:center;width:100%;margin-top:4px;}}
+.btn-historial:hover{{background:#222244;border-color:#818cf8;}}
 </style>
 </head>
 <body>
@@ -475,6 +490,10 @@ tbody tr.pedido-vencido > td:first-child{{border-left:3px solid var(--err);}}
     <div class="urg-mfield">
       <span>CANTIDAD NECESARIA</span>
       <input id="urg-cant" type="number" min="1" placeholder="0" style="width:140px;">
+    </div>
+    <div class="urg-mfield">
+      <span>PARA CUÁNDO</span>
+      <input id="urg-fecha" type="date" style="width:180px;">
     </div>
     <div class="urg-mbtns">
       <button class="urg-mcancel" onclick="cerrarModalUrg()">Cancelar</button>
@@ -533,16 +552,15 @@ tbody tr.pedido-vencido > td:first-child{{border-left:3px solid var(--err);}}
         <th onclick="S.ins.sortBy(2)">UNIDAD</th>
         <th onclick="S.ins.sortBy(3)" class="num" title="Desde último ingreso de MSTOCK cuando está disponible; total histórico si no hay ingreso registrado">CONSUMIDO ▾</th>
         <th onclick="S.ins.sortBy(4)" class="num">STOCK DEP.</th>
+        <th class="num" style="min-width:80px;">ÚLT. PEDIDO</th>
         <th class="num" style="min-width:70px;">STOCK MÍN.</th>
         <th style="min-width:130px;">LOGÍSTICA</th>
         <th style="min-width:130px;">COMPRAS</th>
-        <th style="text-align:center;min-width:90px;">PEDIDO ✓</th>
       </tr></thead>
       <tbody id="ins-tbody"></tbody>
     </table>
   </div>
   <div class="pag" id="ins-pag"></div>
-  <div id="ins-pedido" class="pedido-sec"><div id="ins-pedido-content"></div></div>
 </div>
 
 <!-- ══ CARTONES ══ -->
@@ -593,24 +611,23 @@ tbody tr.pedido-vencido > td:first-child{{border-left:3px solid var(--err);}}
         <th class="num" style="min-width:70px;">STOCK MÍN.</th>
         <th style="min-width:130px;">LOGÍSTICA</th>
         <th style="min-width:130px;">COMPRAS</th>
-        <th style="text-align:center;min-width:90px;">PEDIDO ✓</th>
+        <th class="num" style="min-width:80px;">ÚLT. PEDIDO</th>
       </tr></thead>
       <tbody id="cart-tbody"></tbody>
     </table>
   </div>
   <div class="pag" id="cart-pag"></div>
-  <div id="cart-pedido" class="pedido-sec"><div id="cart-pedido-content"></div></div>
 </div>
 
 <!-- ══ HISTORIAL ══ -->
 <div id="sec-hist" class="section">
   <div class="hist-toolbar">
     <select id="hist-tipo" onchange="renderHistorial()" style="background:#1a1a1a;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:4px;font-size:12px;">
-      <option value="">Todos los eventos</option>
+      <option value="">Todos</option>
+      <option value="pedido">Pedidos (solo pendientes)</option>
+      <option value="llego">Pedidos llegados</option>
       <option value="urgente">Urgentes</option>
       <option value="carton">Cartones solicitados</option>
-      <option value="pedido">Pedidos realizados</option>
-      <option value="llego">Llegó</option>
     </select>
     <input type="text" id="hist-bus" placeholder="Buscar artículo o persona..." oninput="renderHistorial()"
       style="background:#1a1a1a;border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:4px;font-size:12px;width:240px;">
@@ -620,13 +637,14 @@ tbody tr.pedido-vencido > td:first-child{{border-left:3px solid var(--err);}}
   <div class="hist-wrap">
     <table>
       <thead><tr>
-        <th style="min-width:130px;">FECHA</th>
-        <th>TIPO</th>
-        <th>ARTÍCULO / DESCRIPCIÓN</th>
-        <th>QUIÉN</th>
-        <th class="num" style="min-width:80px;">CANTIDAD</th>
-        <th style="min-width:160px;">NOTA</th>
-        <th style="width:70px;"></th>
+        <th style="min-width:140px;">FECHA PEDIDO</th>
+        <th style="min-width:160px;">PROVEEDOR</th>
+        <th style="min-width:100px;">QUIÉN</th>
+        <th class="num" style="min-width:70px;">ART.</th>
+        <th class="num" style="min-width:70px;">TOTAL</th>
+        <th style="min-width:140px;">FECHA LLEGADA</th>
+        <th class="num" style="min-width:60px;">DÍAS</th>
+        <th style="min-width:100px;"></th>
       </tr></thead>
       <tbody id="hist-tbody"></tbody>
     </table>
@@ -702,6 +720,28 @@ tbody tr.pedido-vencido > td:first-child{{border-left:3px solid var(--err);}}
   </div>
 </div>
 
+<!-- Modal historial proveedor -->
+<div id="hist-prov-modal">
+  <div class="ppm-box" style="min-width:560px;max-width:780px;">
+    <div class="ppm-title">📋 HISTORIAL — <span id="hpm-prov"></span></div>
+    <div class="ppm-sub" id="hpm-sub"></div>
+    <div class="ppm-scroll">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr>
+          <th style="min-width:140px;">FECHA</th>
+          <th style="min-width:80px;">TIPO</th>
+          <th>ARTÍCULOS</th>
+          <th style="min-width:90px;text-align:right;">TOTAL UNID.</th>
+        </tr></thead>
+        <tbody id="hpm-tbody"></tbody>
+      </table>
+    </div>
+    <div class="ppm-btns">
+      <button class="urg-mcancel" onclick="cerrarHistProv()">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal llegó — pedido completo -->
 <div id="llego-grp-modal">
   <div class="ppm-box" style="min-width:560px;max-width:680px;">
@@ -740,18 +780,22 @@ tbody tr.pedido-vencido > td:first-child{{border-left:3px solid var(--err);}}
         <thead><tr>
           <th style="min-width:90px;">CÓDIGO</th>
           <th>DESCRIPCIÓN</th>
+          <th style="min-width:70px;text-align:right;">STOCK</th>
+          <th style="min-width:80px;text-align:right;">CONSUMIDO</th>
+          <th style="min-width:70px;text-align:center;">UNIDAD</th>
           <th style="min-width:90px;text-align:right;">CANTIDAD</th>
         </tr></thead>
         <tbody id="ppm-tbody"></tbody>
       </table>
     </div>
     <div class="ppm-fecha-row">
-      FECHA DE ENTREGA ESTIMADA:
+      QUIÉN HACE EL PEDIDO:
+      <input type="text" id="ppm-quien" placeholder="Tu nombre..." style="width:160px;">
+      &nbsp;&nbsp;FECHA DE ENTREGA:
       <input type="date" id="ppm-fecha">
     </div>
     <div class="ppm-btns">
       <button class="urg-mcancel" style="margin-right:auto;" onclick="resetCantidadesPedido()">✕ Todo en 0</button>
-      <button id="ppm-btn-esp" class="urg-mcancel" style="display:none;color:#a0a000;border-color:#3a3a00;" onclick="toggleEsporadicosModal()"></button>
       <button class="urg-mcancel" onclick="cerrarModalPedidoProv()">Cancelar</button>
       <button class="urg-mconfirm" style="background:#0a1e0a;border-color:#22c55e;color:#22c55e;" onclick="confirmarPedidoProv()">📦 CONFIRMAR PEDIDO</button>
     </div>
@@ -920,6 +964,7 @@ function abrirModalUrg() {{
   document.getElementById('urg-modal-art').textContent = art ? art.Descripcion : ctxCod;
   document.getElementById('urg-quien').value='';
   document.getElementById('urg-cant').value='';
+  document.getElementById('urg-fecha').value='';
   document.getElementById('urg-modal').classList.add('open');
   setTimeout(()=>document.getElementById('urg-quien').focus(), 60);
 }}
@@ -929,13 +974,25 @@ function cerrarModalUrg() {{
 function confirmarUrg() {{
   const quien = document.getElementById('urg-quien').value.trim();
   const cant  = parseInt(document.getElementById('urg-cant').value)||0;
+  const fechaRaw = document.getElementById('urg-fecha').value;
+  const paraCuando = fechaRaw ? fechaRaw.split('-').reverse().join('/') : null;
   if (!quien) {{ document.getElementById('urg-quien').focus(); return; }}
   if (cant<=0) {{ document.getElementById('urg-cant').focus(); return; }}
-  (shared.urgente=shared.urgente||[]).push({{cod:ctxCod, quien, cantidad:cant, fecha:new Date().toLocaleDateString('es-AR')}});
+  (shared.urgente=shared.urgente||[]).push({{cod:ctxCod, quien, cantidad:cant, fecha:new Date().toLocaleDateString('es-AR'), paraCuando}});
   shared.desuso = (shared.desuso||[]).filter(c=>c!==ctxCod);
   const artUrg = [...DATASETS['ins'],...DATASETS['cart']].find(r=>r.Codigo===ctxCod);
-  addHistorial({{tipo:'urgente', cod:ctxCod, descripcion:artUrg?artUrg.Descripcion:ctxCod, quien, cantidad:cant, nota:''}});
+  addHistorial({{tipo:'urgente', cod:ctxCod, descripcion:artUrg?artUrg.Descripcion:ctxCod, quien, cantidad:cant, nota:paraCuando?'Para: '+paraCuando:''}});
   saveShared({{urgente:shared.urgente, desuso:shared.desuso, historial:shared.historial}});
+  // Notificar por Google Chat
+  fetch(SERVER+'/api/urgente-notify', {{
+    method:'POST', headers:{{'Content-Type':'application/json'}},
+    body: JSON.stringify({{
+      codigo: ctxCod,
+      descripcion: artUrg ? artUrg.Descripcion : ctxCod,
+      quien, cantidad: cant, paraCuando
+    }}),
+    signal: AbortSignal.timeout(6000)
+  }}).catch(()=>{{}});
   cerrarModalUrg();
   S.ins.filtrar(); S.cart.filtrar(); renderDesusoTables(); actualizarBadgesUrgente();
 }}
@@ -1074,7 +1131,8 @@ function confirmarPedido() {{
     descripcion: art ? art.Descripcion : pedidoCod,
     quien: urgInfo&&typeof urgInfo==='object' ? urgInfo.quien : '',
     cantidad: cant,
-    nota: 'Entrega: '+fecha
+    nota: 'Entrega: '+fecha,
+    proveedor: art ? art.Proveedor : ''
   }});
   saveShared({{pedido_realizado:shared.pedido_realizado, pedido_info:shared.pedido_info, historial:shared.historial}});
   cerrarModalPedido();
@@ -1099,63 +1157,102 @@ function onCheckProveedor(e, el, secId) {{
   pedirProveedor(el.dataset.prov, secId);
 }}
 
-let _mostrarEsporadicos = false;
+function pedirUrgentesProveedor(prov, secId) {{
+  // Abrir modal con solo los artículos urgentes del proveedor, cant pre-cargada del urgente
+  const urgentes = (DATASETS[secId]||[]).filter(r =>
+    r.Proveedor === prov &&
+    !(shared.desuso||[]).includes(r.Codigo) &&
+    isUrgente(r.Codigo)
+  );
+  if (!urgentes.length) return;
+  pedidoProvData = {{ prov, secId, arts: urgentes }};
+  document.getElementById('ppm-prov').textContent = prov;
+  let tbodyHtml = '';
+  urgentes.forEach(r => {{
+    const urgInfo = getUrgenteInfo(r.Codigo);
+    const cantUrg = urgInfo && typeof urgInfo === 'object' ? urgInfo.cantidad : '';
+    const stmin = (shared.stock_minimo||{{}})[r.Codigo];
+    const stminBadge = (stmin > 0 && r.StockActual < stmin)
+      ? `<span style="font-size:9px;color:var(--err);margin-left:4px;">▼mín ${{stmin}}</span>` : '';
+    const yaPedido = (shared.pedido_realizado||[]).includes(r.Codigo);
+    const cantPrev = yaPedido ? ((shared.pedido_info||{{}})[r.Codigo]?.cantidad ?? '') : '';
+    const yaBadge  = yaPedido ? `<span style="color:#60a5fa;font-size:10px;margin-left:5px;">(pedido: ${{cantPrev}})</span>` : '';
+    const stockColor = r.StockActual <= 0 ? 'color:var(--err);' : 'color:#aaa;';
+    tbodyHtml += `<tr>
+      <td style="color:#555;font-size:10px">${{r.Codigo}}</td>
+      <td>${{r.Descripcion}}${{stminBadge}}${{yaBadge}}
+        <span style="display:inline-block;background:#2e0808;color:var(--err);font-size:9px;font-weight:900;padding:1px 6px;border-radius:2px;margin-left:5px;">⚡ URG</span>
+      </td>
+      <td style="text-align:right;${{stockColor}}font-size:12px;">${{r.StockActual}}</td>
+      <td style="text-align:center;color:#666;font-style:italic;font-size:11px;">${{r.Unidad}}</td>
+      <td style="text-align:right"><input class="ppm-cant" type="number" min="0" value="${{cantUrg}}" data-orig="${{cantUrg}}" oninput="onPpmCantChange(this)" id="ppm-c-${{r.Codigo}}"></td>
+    </tr>`;
+  }});
+  document.getElementById('ppm-tbody').innerHTML = tbodyHtml;
+  document.getElementById('ppm-fecha').value = '';
+  document.getElementById('ppm-quien').value = '';
+  document.getElementById('pedido-prov-modal').classList.add('open');
+}}
+
 function pedirProveedor(prov, secId) {{
-  _mostrarEsporadicos = false;
-  _renderModalPedido(prov, secId);
-}}
-function toggleEsporadicosModal() {{
-  _mostrarEsporadicos = !_mostrarEsporadicos;
-  const {{ prov, secId }} = pedidoProvData;
-  _renderModalPedido(prov, secId);
-}}
-function _renderModalPedido(prov, secId) {{
   const todos = (DATASETS[secId]||[]).filter(r =>
     r.Proveedor === prov &&
     !(shared.desuso||[]).includes(r.Codigo)
   );
-  const tieneConsumo = r => r.ConsumidoDesdeIngreso > 0 || (r.ConsumidoDesdeIngreso < 0 && r.Consumido > 0);
-  const esEsp = r => (shared.esporadico||[]).includes(r.Codigo);
-  const visibles = todos.filter(r => _mostrarEsporadicos || !esEsp(r));
-  const espCnt = todos.filter(r => esEsp(r)).length;
-  const conCons = visibles.filter(r => tieneConsumo(r));
-  const sinCons = visibles.filter(r => !tieneConsumo(r));
-  const arts = [...conCons, ...sinCons];
+  const tieneConsumoReciente = r => r.ConsumidoDesdeIngreso > 0;
+  const esEsporadico = r => (shared.esporadico||[]).includes(r.Codigo) ||
+                             (r.ConsumidoDesdeIngreso < 0 && r.Consumido > 0);
+  const yaPedido = r => (shared.pedido_realizado||[]).includes(r.Codigo);
+
+  // Separar ya pedidos del resto — van siempre al fondo con cant 0
+  const noPed      = todos.filter(r => !yaPedido(r));
+  const pedidos    = todos.filter(r =>  yaPedido(r));
+  const conCons    = noPed.filter(r => tieneConsumoReciente(r) && !esEsporadico(r));
+  const esporadicos = noPed.filter(r => esEsporadico(r));
+  const sinCons    = noPed.filter(r => !tieneConsumoReciente(r) && !esEsporadico(r));
+  const arts = [...conCons, ...esporadicos, ...sinCons, ...pedidos];
+  if (!arts.length) return;
   pedidoProvData = {{ prov, secId, arts }};
   document.getElementById('ppm-prov').textContent = prov;
-  // Botón esporádicos
-  const btnEsp = document.getElementById('ppm-btn-esp');
-  if (btnEsp) {{
-    if (espCnt > 0) {{
-      btnEsp.style.display = '';
-      btnEsp.textContent = _mostrarEsporadicos ? `Ocultar esporádicos (${{espCnt}})` : `+ Ver esporádicos (${{espCnt}})`;
-    }} else {{
-      btnEsp.style.display = 'none';
-    }}
-  }}
   let tbodyHtml = '';
-  let separadorPuesto = false;
+  let sepEsp = false, sepSin = false, sepPed = false;
   arts.forEach(r => {{
-    if (!separadorPuesto && !tieneConsumo(r) && conCons.length > 0) {{
-      separadorPuesto = true;
-      tbodyHtml += `<tr><td colspan="3" style="padding:4px 10px;background:#111;color:#444;font-size:9px;font-weight:700;letter-spacing:.5px;text-align:center;">── SIN CONSUMO REGISTRADO ──</td></tr>`;
+    const esEsp  = esEsporadico(r);
+    const sinC   = !tieneConsumoReciente(r) && !esEsp && !yaPedido(r);
+    const esPed  = yaPedido(r);
+    if (!sepEsp && esEsp && conCons.length > 0) {{
+      sepEsp = true;
+      tbodyHtml += `<tr><td colspan="6" style="padding:5px 10px;background:#1a1a1a;color:#777;font-size:9px;font-weight:700;letter-spacing:.5px;text-align:center;">── ESPORÁDICOS ──</td></tr>`;
+    }}
+    if (!sepSin && sinC && (conCons.length + esporadicos.length) > 0) {{
+      sepSin = true;
+      tbodyHtml += `<tr><td colspan="6" style="padding:5px 10px;background:#1a1a1a;color:#777;font-size:9px;font-weight:700;letter-spacing:.5px;text-align:center;">── SIN CONSUMO ──</td></tr>`;
+    }}
+    if (!sepPed && esPed) {{
+      sepPed = true;
+      tbodyHtml += `<tr><td colspan="6" style="padding:5px 10px;background:#0f1f0f;color:#4ade80;font-size:9px;font-weight:700;letter-spacing:.5px;text-align:center;">── YA PEDIDO ──</td></tr>`;
     }}
     const stmin = (shared.stock_minimo||{{}})[r.Codigo];
-    const cantAuto = r.ConsumidoDesdeIngreso > 0 ? r.ConsumidoDesdeIngreso : '';
+    const cantPrev = esPed ? ((shared.pedido_info||{{}})[r.Codigo]?.cantidad ?? '') : '';
     const stminBadge = (stmin > 0 && r.StockActual < stmin)
       ? `<span style="font-size:9px;color:var(--err);margin-left:4px;">▼mín ${{stmin}}</span>` : '';
-    const espBadge = esEsp(r) ? `<span class="badge-esp">ESP</span>` : '';
-    const dimStyle = !tieneConsumo(r) ? 'opacity:.45;' : '';
-    const yaPedido = (shared.pedido_realizado||[]).includes(r.Codigo);
-    const cantPrev = yaPedido ? ((shared.pedido_info||{{}})[r.Codigo]?.cantidad ?? '') : '';
-    const yaBadge = yaPedido
-      ? `<span style="color:#60a5fa;font-size:10px;margin-left:5px;">(pedido: ${{cantPrev}})</span>`
+    const yaBadge = esPed
+      ? `<span style="color:#4ade80;font-size:10px;margin-left:5px;">✓ pedido: ${{cantPrev}}</span>`
       : '';
-    const rowColor = yaPedido ? 'color:#60a5fa;' : '';
-    tbodyHtml += `<tr style="${{dimStyle}}${{rowColor}}">
-      <td style="color:#555;font-size:10px">${{r.Codigo}}</td>
-      <td>${{r.Descripcion}}${{espBadge}}${{stminBadge}}${{yaBadge}}</td>
-      <td style="text-align:right"><input class="ppm-cant" type="number" min="0" value="${{cantAuto}}" data-orig="${{cantAuto}}" oninput="onPpmCantChange(this)" id="ppm-c-${{r.Codigo}}"></td>
+    const dimStyle = (esEsp || sinC) ? 'opacity:.55;' : esPed ? 'opacity:.45;' : '';
+    const stockColor = r.StockActual <= 0 ? 'color:var(--err);font-weight:700;' : 'color:#ccc;';
+    const consVal = r.ConsumidoDesdeIngreso > 0
+      ? `<span style="color:#e8b963;font-weight:700;">${{r.ConsumidoDesdeIngreso}}</span>`
+      : (r.ConsumidoDesdeIngreso === 0
+          ? `<span style="color:#4ade80;font-size:10px;">0</span>`
+          : `<span style="color:#555;">—</span>`);
+    tbodyHtml += `<tr style="${{dimStyle}}border-bottom:1px solid #242424;">
+      <td style="color:#aaa;font-size:10px;padding:8px 10px;">${{r.Codigo}}</td>
+      <td style="padding:8px 10px;">${{r.Descripcion}}${{stminBadge}}${{yaBadge}}</td>
+      <td style="text-align:right;${{stockColor}}font-size:12px;padding:8px 10px;">${{r.StockActual}}</td>
+      <td style="text-align:right;padding:8px 10px;">${{consVal}}</td>
+      <td style="text-align:center;color:#888;font-style:italic;font-size:11px;padding:8px 10px;">${{r.Unidad}}</td>
+      <td style="text-align:right;padding:8px 6px;"><input class="ppm-cant" type="number" min="0" value="" data-orig="" oninput="onPpmCantChange(this)" id="ppm-c-${{r.Codigo}}"></td>
     </tr>`;
   }});
   document.getElementById('ppm-tbody').innerHTML = tbodyHtml;
@@ -1179,16 +1276,18 @@ function resetCantidadesPedido() {{
 function confirmarPedidoProv() {{
   const fecha = document.getElementById('ppm-fecha').value;
   if (!fecha) {{ document.getElementById('ppm-fecha').focus(); return; }}
+  const quien = (document.getElementById('ppm-quien').value||'').trim();
   const {{ prov, secId, arts }} = pedidoProvData;
   let count = 0, confirmados = [];
   const grupoId = 'pg_' + Date.now().toString() + Math.random().toString(36).slice(2,6);
+  const fechaHoy = new Date().toISOString().slice(0,10);
   arts.forEach(r => {{
     const cant = parseInt(document.getElementById('ppm-c-'+r.Codigo)?.value)||0;
     if (cant <= 0) return;
     if (!(shared.pedido_realizado||[]).includes(r.Codigo))
       (shared.pedido_realizado = shared.pedido_realizado||[]).push(r.Codigo);
-    (shared.pedido_info = shared.pedido_info||{{}})[r.Codigo] = {{ cantidad:cant, fecha_entrega:fecha, proveedor:prov }};
-    addHistorial({{ tipo:'pedido', cod:r.Codigo, descripcion:r.Descripcion, quien:'', cantidad:cant, nota:`Entrega: ${{fecha}} · ${{prov}}`, grupoId, proveedor:prov, fechaEntrega:fecha }});
+    (shared.pedido_info = shared.pedido_info||{{}})[r.Codigo] = {{ cantidad:cant, fecha_entrega:fecha, proveedor:prov, fecha_pedido:fechaHoy, quien, grupoId }};
+    addHistorial({{ tipo:'pedido', cod:r.Codigo, descripcion:r.Descripcion, quien, cantidad:cant, nota:`Entrega: ${{fecha}}`, grupoId, proveedor:prov, fechaEntrega:fecha }});
     confirmados.push({{ codigo:r.Codigo, descripcion:r.Descripcion, cantidad:cant }});
     count++;
   }});
@@ -1208,19 +1307,6 @@ function onPpmCantChange(el) {{
     row.style.fontWeight  = modificado ? '700' : '';
   }}
   el.style.borderColor = modificado ? 'var(--accent)' : '';
-  // Burbujear al tope si tiene cantidad > 0
-  const cant = parseFloat(el.value) || 0;
-  const tbody = document.getElementById('ppm-tbody');
-  if (cant > 0 && row && tbody && tbody.firstElementChild !== row) {{
-    const elId = el.id;
-    tbody.prepend(row);
-    const restored = document.getElementById(elId);
-    if (restored) {{
-      restored.focus();
-      const l = restored.value.length;
-      restored.setSelectionRange(l, l);
-    }}
-  }}
 }}
 
 function descargarTxtPedido(prov, arts, fecha) {{
@@ -1309,136 +1395,283 @@ function addHistorial(entry) {{
   (shared.historial = shared.historial||[]).unshift(entry);
 }}
 
-function renderHistorial() {{
-  const tipo = document.getElementById('hist-tipo')?.value || '';
-  const bus  = (document.getElementById('hist-bus')?.value||'').toLowerCase().trim();
-  const tipoCls   = {{urgente:'tipo-urgente',carton:'tipo-carton',pedido:'tipo-pedido',llego:'tipo-llego'}};
-  const tipoLabel = {{urgente:'URGENTE',carton:'CARTON',pedido:'PEDIDO',llego:'✓ LLEGÓ'}};
-  const hist = (shared.historial||[]).filter(e => {{
-    if (tipo && e.tipo!==tipo) return false;
-    const hay = s => String(s||'').toLowerCase().includes(bus);
-    if (bus && !hay(e.descripcion) && !hay(e.quien) && !hay(e.cod) && !hay(e.nota) && !hay(e.proveedor)) return false;
-    return true;
+// ── Migración: fusionar llegó con pedido por proveedor+artículos ─
+function migrarHistorialPedidoLlego() {{
+  const hist = shared.historial || [];
+  // Agrupar pedidos por grupoId
+  const pedGrupos = {{}};
+  hist.filter(e=>e.tipo==='pedido').forEach(e=>{{
+    const gk = e.grupoId || ('p_'+e.fecha);
+    if (!pedGrupos[gk]) {{
+      const prov = e.proveedor || ((e.nota||'').match(/Entrega:[^·]*·\\s*(.+)$/) || [])[1]?.trim() || '';
+      pedGrupos[gk] = {{gk, prov, fecha:e.fecha, cods:new Set()}};
+    }}
+    pedGrupos[gk].cods.add(e.cod);
   }});
-
-  _histGruposRender = {{}};
-  let grupoIdx = 0;
-  const grupoKeys = {{}};
-  const virtEntries = [];
-  hist.forEach(e => {{
-    if (e.tipo === 'pedido' || e.tipo === 'llego') {{
-      const gk = e.grupoId || (e.tipo + '_ts_' + (e.fecha||''));
-      if (!grupoKeys[gk]) {{
-        const rk = 'hg_' + (grupoIdx++);
-        grupoKeys[gk] = rk;
-        const prov = e.proveedor || ((e.nota||'').match(/·\\s*(.+)$/) || [])[1]?.trim() || '';
-        const fechaEnt = e.fechaEntrega || ((e.nota||'').match(/Entrega:\\s*([\\d-]+)/) || [])[1] || '';
-        _histGruposRender[rk] = {{ rk, tipo:e.tipo, fecha:e.fecha, prov, fechaEnt, items:[], ids:[] }};
-        virtEntries.push({{ _tipo:'grupo', rk }});
-      }}
-      const rk = grupoKeys[gk];
-      _histGruposRender[rk].items.push({{ codigo:e.cod, descripcion:e.descripcion, cantidad:e.cantidad }});
-      _histGruposRender[rk].ids.push(e.id);
-    }} else {{
-      virtEntries.push({{ _tipo:'entry', e }});
+  // Para llegós sin pedidoGrupoId, buscar el pedido correspondiente
+  const lgGrupos = {{}};
+  hist.filter(e=>e.tipo==='llego').forEach(e=>{{
+    const gk = e.grupoId || ('l_'+e.fecha);
+    if (!lgGrupos[gk]) {{
+      const prov = e.proveedor || '';
+      lgGrupos[gk] = {{gk, prov, fecha:e.fecha, cods:new Set(), pedidoGrupoId:e.pedidoGrupoId||''}};
+    }}
+    lgGrupos[gk].cods.add(e.cod);
+  }});
+  let changed = false;
+  Object.values(lgGrupos).forEach(lg=>{{
+    if (lg.pedidoGrupoId) return;
+    // Buscar mejor pedido: mismo proveedor, antes de llegó, máximo overlap artículos
+    let best = null, bestScore = 0;
+    Object.values(pedGrupos).forEach(pg=>{{
+      if (pg.prov && lg.prov && pg.prov !== lg.prov) return;
+      if (pg.fecha >= lg.fecha) return;
+      let overlap = 0;
+      lg.cods.forEach(c=>{{ if(pg.cods.has(c)) overlap++; }});
+      if (overlap > bestScore) {{ bestScore=overlap; best=pg; }}
+    }});
+    if (best && bestScore > 0) {{
+      hist.forEach(e=>{{
+        if (e.tipo==='llego' && (e.grupoId||('l_'+e.fecha))===lg.gk) {{
+          e.pedidoGrupoId = best.gk;
+          changed = true;
+        }}
+      }});
     }}
   }});
+  if (changed) saveShared({{historial: shared.historial}});
+}}
 
-  document.getElementById('hist-cnt').textContent = virtEntries.length+' registro'+(virtEntries.length!==1?'s':'');
-  if (!virtEntries.length) {{
-    document.getElementById('hist-tbody').innerHTML = '<tr><td colspan="7" style="color:#333;padding:20px;text-align:center;">Sin registros</td></tr>';
+function renderHistorial() {{
+  const filtroTipo = document.getElementById('hist-tipo')?.value || '';
+  const bus = (document.getElementById('hist-bus')?.value||'').toLowerCase().trim();
+  const all = shared.historial || [];
+
+  // ── Separar eventos simples (urgente, carton) de pedidos+llegós ──
+  const tipoCls   = {{urgente:'tipo-urgente',carton:'tipo-carton'}};
+  const tipoLabel = {{urgente:'URGENTE',carton:'CARTÓN'}};
+
+  // ── Agrupar pedidos ──
+  const pedGrupos = {{}};
+  all.filter(e=>e.tipo==='pedido').forEach(e=>{{
+    const gk = e.grupoId || ('p_'+e.fecha);
+    if (!pedGrupos[gk]) {{
+      const prov = e.proveedor || ((e.nota||'').match(/Entrega:[^·]*·\\s*(.+)$/) || [])[1]?.trim() || '—';
+      pedGrupos[gk] = {{gk, prov, quien:e.quien||'', fecha:e.fecha, ids:[], items:[]}};
+    }}
+    if (e.quien && !pedGrupos[gk].quien) pedGrupos[gk].quien = e.quien;
+    pedGrupos[gk].ids.push(e.id);
+    pedGrupos[gk].items.push({{cod:e.cod, desc:e.descripcion, cantPed:e.cantidad||0, cantRec:0}});
+  }});
+
+  // ── Agrupar llegós y fusionar con pedidos ──
+  const lgGrupos = {{}};
+  all.filter(e=>e.tipo==='llego').forEach(e=>{{
+    const gk = e.grupoId || ('l_'+e.fecha);
+    if (!lgGrupos[gk]) {{
+      const prov = e.proveedor || '';
+      lgGrupos[gk] = {{gk, prov, fecha:e.fecha, ids:[], items:[], pedidoGrupoId:e.pedidoGrupoId||''}};
+    }}
+    lgGrupos[gk].ids.push(e.id);
+    lgGrupos[gk].items.push({{cod:e.cod, desc:e.descripcion, cantRec:e.cantidad||0}});
+  }});
+
+  // ── Construir registros unificados ──
+  const usedPed = new Set(), usedLg = new Set();
+  const unified = [];
+
+  Object.values(lgGrupos).forEach(lg=>{{
+    usedLg.add(lg.gk);
+    const pgk = lg.pedidoGrupoId;
+    const pg = pgk ? pedGrupos[pgk] : null;
+    if (pg) usedPed.add(pgk);
+    const prov = pg?.prov || lg.prov || (() => {{
+      const c = lg.items[0]?.cod;
+      const art = c && [...(DATASETS['ins']||[]),...(DATASETS['cart']||[])].find(r=>r.Codigo===c);
+      return art ? art.Proveedor : '—';
+    }})();
+    // Merge items: combinar cantPed (del pedido) con cantRec (del llegó)
+    const mergedItems = [];
+    const recByCod = {{}};
+    lg.items.forEach(i=>{{ recByCod[i.cod] = i.cantRec; }});
+    if (pg) {{
+      pg.items.forEach(i=>{{
+        mergedItems.push({{cod:i.cod, desc:i.desc, cantPed:i.cantPed, cantRec:recByCod[i.cod]??0}});
+        delete recByCod[i.cod];
+      }});
+    }}
+    Object.entries(recByCod).forEach(([cod,cantRec])=>{{
+      const it = lg.items.find(i=>i.cod===cod);
+      mergedItems.push({{cod, desc:it?.desc||'', cantPed:0, cantRec}});
+    }});
+    unified.push({{
+      _t:'completo', prov, quien:pg?.quien||'',
+      fechaPed:pg?.fecha||'', fechaLleg:lg.fecha,
+      items:mergedItems,
+      allIds:[...(pg?.ids||[]),...lg.ids],
+      pedGrupoId:pgk||'', lgGrupoId:lg.gk,
+    }});
+  }});
+
+  // Pedidos sin llegó (pendientes)
+  Object.values(pedGrupos).forEach(pg=>{{
+    if (usedPed.has(pg.gk)) return;
+    unified.push({{
+      _t:'pendiente', prov:pg.prov, quien:pg.quien,
+      fechaPed:pg.fecha, fechaLleg:'',
+      items:pg.items.map(i=>{{return {{...i,cantRec:0}}}}),
+      allIds:pg.ids, pedGrupoId:pg.gk, lgGrupoId:'',
+    }});
+  }});
+
+  // Ordenar más reciente primero
+  unified.sort((a,b)=>{{
+    const da=a.fechaLleg||a.fechaPed||'', db=b.fechaLleg||b.fechaPed||'';
+    return db.localeCompare(da);
+  }});
+
+  // Eventos simples (urgente, carton)
+  const simples = all.filter(e=>e.tipo!=='pedido'&&e.tipo!=='llego');
+
+  // ── Filtrar ──
+  let filtrUnif = unified, filtrSimp = simples;
+  if (filtroTipo === 'pedido' || filtroTipo === 'llego') {{
+    filtrSimp = [];
+  }} else if (filtroTipo === 'urgente' || filtroTipo === 'carton') {{
+    filtrUnif = [];
+    filtrSimp = simples.filter(e=>e.tipo===filtroTipo);
+  }}
+  if (bus) {{
+    const m = s => String(s||'').toLowerCase().includes(bus);
+    filtrUnif = filtrUnif.filter(u => m(u.prov)||m(u.quien)||u.items.some(i=>m(i.cod)||m(i.desc)));
+    filtrSimp = filtrSimp.filter(e => m(e.descripcion)||m(e.quien)||m(e.cod)||m(e.proveedor));
+  }}
+
+  const total = filtrUnif.length + filtrSimp.length;
+  document.getElementById('hist-cnt').textContent = total+' registro'+(total!==1?'s':'');
+
+  if (!total) {{
+    document.getElementById('hist-tbody').innerHTML='<tr><td colspan="8" style="color:#333;padding:20px;text-align:center;">Sin registros</td></tr>';
     return;
   }}
 
+  // ── Calcular días de espera ──
+  function diasEntre(fechaA, fechaB) {{
+    try {{
+      // fechas en formato es-AR: dd/mm/aaaa hh:mm:ss o similar
+      const parseF = f => {{
+        if (!f) return null;
+        const p = f.match(/(\\d{{1,2}})\\/(\\d{{1,2}})\\/(\\d{{4}})/);
+        return p ? new Date(+p[3],+p[2]-1,+p[1]) : null;
+      }};
+      const a=parseF(fechaA), b=parseF(fechaB);
+      if (!a||!b) return null;
+      return Math.round((b-a)/86400000);
+    }} catch(e){{ return null; }}
+  }}
+
   let html = '';
-  virtEntries.forEach(v => {{
-    if (v._tipo === 'grupo') {{
-      const g = _histGruposRender[v.rk];
-      const total = g.items.reduce((s,i)=>s+(i.cantidad||0), 0);
-      const subRows = g.items.map(i=>`<tr>
-        <td style="color:#444;padding:3px 8px;">${{i.codigo||''}}</td>
-        <td style="padding:3px 8px;">${{i.descripcion||''}}</td>
-        <td style="color:#aaa;text-align:right;padding:3px 8px;">${{i.cantidad||0}}</td>
-      </tr>`).join('');
-      if (g.tipo === 'llego') {{
-        const provLlego = g.prov || (() => {{
-          const c = g.items[0]?.codigo;
-          const art = c && [...(DATASETS['ins']||[]),...(DATASETS['cart']||[])].find(r=>r.Codigo===c);
-          return art ? art.Proveedor : '—';
-        }})();
-        html += `
-          <tr style="cursor:pointer" onclick="toggleDetHistGrupo('${{v.rk}}')">
-            <td style="color:#555;font-size:11px;white-space:nowrap">${{g.fecha}}</td>
-            <td><span class="tipo-badge tipo-llego">✓ LLEGÓ</span></td>
-            <td><strong>${{provLlego}}</strong><span style="color:#555;font-size:11px;"> · ${{g.items.length}} art.</span></td>
-            <td style="color:#aaa">—</td>
-            <td class="num" style="color:#aaa">${{fmt(total)}}</td>
-            <td style="color:#555;font-size:10px;">ver ▾</td>
-            <td style="white-space:nowrap;display:flex;gap:4px;padding:4px 6px;align-items:center;">
-              <button class="btn-dl-txt" onclick="event.stopPropagation();descargarTxtLlego('${{v.rk}}')">↓ TXT</button>
-              <button class="hist-del" onclick="event.stopPropagation();eliminarGrupoHist('${{v.rk}}')">Eliminar</button>
-            </td>
-          </tr>
-          <tr id="detg-${{v.rk}}" style="display:none;background:#0d0d0d">
-            <td colspan="7" style="padding:6px 24px 10px">
-              <table style="width:100%;font-size:11px;border-collapse:collapse">
-                <thead><tr>
-                  <th style="color:#444;text-align:left;padding:3px 8px;border-bottom:1px solid #1a1a1a;">CÓDIGO</th>
-                  <th style="color:#444;text-align:left;padding:3px 8px;border-bottom:1px solid #1a1a1a;">DESCRIPCIÓN</th>
-                  <th style="color:#444;text-align:right;padding:3px 8px;border-bottom:1px solid #1a1a1a;">CANT. RECIBIDA</th>
-                </tr></thead>
-                <tbody>${{subRows}}</tbody>
-              </table>
-            </td>
-          </tr>`;
-      }} else {{
-        const fechaEntFmt = g.fechaEnt ? g.fechaEnt.split('-').reverse().join('/') : '?';
-        html += `
-          <tr style="cursor:pointer" onclick="toggleDetHistGrupo('${{v.rk}}')">
-            <td style="color:#555;font-size:11px;white-space:nowrap">${{g.fecha}}</td>
-            <td><span class="tipo-badge tipo-pedido">PEDIDO</span></td>
-            <td><strong>${{g.prov}}</strong><span style="color:#555;font-size:11px;"> · ${{g.items.length}} art. · entrega ${{fechaEntFmt}}</span></td>
-            <td style="color:#aaa">—</td>
-            <td class="num" style="color:#aaa">${{fmt(total)}}</td>
-            <td style="color:#555;font-size:10px;">ver ▾</td>
-            <td style="white-space:nowrap;display:flex;gap:4px;padding:6px 4px;flex-wrap:wrap;">
-              <button class="hist-del" style="border-color:#2a6b2a;color:#4ade80;" onclick="event.stopPropagation();redownloadTxtGrupo('${{v.rk}}')">↓ TXT</button>
-              <button class="hist-del" style="border-color:#1a4a7a;color:#60a5fa;" onclick="event.stopPropagation();editarPedidoHist('${{v.rk}}')">✎ Editar</button>
-              <button class="hist-del" onclick="event.stopPropagation();eliminarGrupoHist('${{v.rk}}')">🗑 Hist.</button>
-              <button class="hist-del" style="border-color:#6b2a2a;color:#f87171;" onclick="event.stopPropagation();cancelarPedidoHist('${{v.rk}}')">✕ Cancelar pedido</button>
-            </td>
-          </tr>
-          <tr id="detg-${{v.rk}}" style="display:none;background:#0d0d0d">
-            <td colspan="7" style="padding:6px 24px 10px">
-              <table style="width:100%;font-size:11px;border-collapse:collapse">
-                <thead><tr>
-                  <th style="color:#444;text-align:left;padding:3px 8px;border-bottom:1px solid #1a1a1a;">CÓDIGO</th>
-                  <th style="color:#444;text-align:left;padding:3px 8px;border-bottom:1px solid #1a1a1a;">DESCRIPCIÓN</th>
-                  <th style="color:#444;text-align:right;padding:3px 8px;border-bottom:1px solid #1a1a1a;">CANT.</th>
-                </tr></thead>
-                <tbody>${{subRows}}</tbody>
-              </table>
-            </td>
-          </tr>`;
-      }}
-    }} else {{
-      const e = v.e;
-      html += `
-        <tr>
-          <td style="color:#555;font-size:11px;white-space:nowrap">${{e.fecha}}</td>
-          <td><span class="tipo-badge ${{tipoCls[e.tipo]||''}}">${{tipoLabel[e.tipo]||e.tipo}}</span></td>
-          <td>${{e.descripcion||''}} ${{e.cod?`<span style="color:#333;font-size:10px">${{e.cod}}</span>`:''}}</td>
-          <td style="color:#aaa">${{e.quien||'—'}}</td>
-          <td class="num" style="color:#aaa">${{e.cantidad||'—'}}</td>
-          <td><span contenteditable="true" spellcheck="false"
-                style="color:#666;cursor:text;border-radius:3px;padding:1px 5px;min-width:80px;display:inline-block;"
-                onblur="editarNotaHist('${{e.id}}',this.textContent)"
-              >${{e.nota||''}}</span></td>
-          <td><button class="hist-del" onclick="eliminarHistorial('${{e.id}}')">Eliminar</button></td>
-        </tr>`;
-    }}
+
+  // Pedidos unificados
+  filtrUnif.forEach((u,ui)=>{{
+    const total = u.items.reduce((s,i)=>s+(i.cantPed||i.cantRec||0),0);
+    const dias = u._t==='completo' ? diasEntre(u.fechaPed,u.fechaLleg) : null;
+    const diasTxt = dias!==null ? dias+'d' : '—';
+    const diasCls = dias===null?'color:#555':dias<=7?'color:#22c55e;font-weight:700':dias<=14?'color:var(--accent);font-weight:700':'color:var(--warn);font-weight:700';
+    const estadoBadge = u._t==='completo'
+      ? '<span class="tipo-badge tipo-llego">✓ LLEGÓ</span>'
+      : '<span class="tipo-badge tipo-pedido">PENDIENTE</span>';
+    const rk = 'uhg_'+ui;
+    const subRows = u.items.map(i=>{{
+      const recColor = i.cantRec>0?'color:#22c55e':'color:#555';
+      return `<tr>
+        <td style="color:#555;padding:3px 10px;font-size:11px;">${{i.cod||''}}</td>
+        <td style="padding:3px 10px;font-size:11px;">${{i.desc||''}}</td>
+        <td style="text-align:right;padding:3px 10px;font-size:11px;">${{i.cantPed||'—'}}</td>
+        <td style="text-align:right;padding:3px 10px;font-size:11px;${{recColor}}">${{i.cantRec||'—'}}</td>
+      </tr>`;
+    }}).join('');
+    html += `
+      <tr style="cursor:pointer;border-bottom:1px solid #1e1e1e;" onclick="const _el=document.getElementById('${{rk}}');_el.style.display=_el.style.display==='table-row'?'none':'table-row'">
+        <td style="color:#555;font-size:11px;white-space:nowrap;padding:8px 10px;">${{u.fechaPed||'—'}}</td>
+        <td style="padding:8px 10px;font-weight:700;">${{u.prov}}</td>
+        <td style="padding:8px 10px;color:#aaa;font-size:11px;">${{u.quien||'—'}}</td>
+        <td class="num" style="padding:8px 10px;">${{u.items.length}}</td>
+        <td class="num" style="padding:8px 10px;">${{fmt(total)}}</td>
+        <td style="padding:8px 10px;color:#4ade80;font-size:11px;white-space:nowrap;">${{u.fechaLleg||'—'}}</td>
+        <td style="padding:8px 10px;${{diasCls}}">${{diasTxt}}</td>
+        <td style="padding:8px 10px;">${{estadoBadge}} <span style="color:#444;font-size:10px;margin-left:4px;">▾</span>
+          ${{u._t==='pendiente'?`<button class="hist-del" style="margin-left:6px;border-color:#6b2a2a;color:#f87171;" onclick="event.stopPropagation();cancelarPedidoHistU('${{u.pedGrupoId}}')" title="Cancelar pedido">✕</button>`:''}}
+        </td>
+      </tr>
+      <tr id="${{rk}}" style="display:none;background:#0d0d0d;">
+        <td colspan="8" style="padding:6px 24px 12px;">
+          <table style="width:100%;font-size:11px;border-collapse:collapse;">
+            <thead><tr>
+              <th style="color:#444;padding:3px 10px;text-align:left;border-bottom:1px solid #1a1a1a;">CÓDIGO</th>
+              <th style="color:#444;padding:3px 10px;text-align:left;border-bottom:1px solid #1a1a1a;">DESCRIPCIÓN</th>
+              <th style="color:#444;padding:3px 10px;text-align:right;border-bottom:1px solid #1a1a1a;">PEDIDO</th>
+              <th style="color:#22c55e;padding:3px 10px;text-align:right;border-bottom:1px solid #1a1a1a;">RECIBIDO</th>
+            </tr></thead>
+            <tbody>${{subRows}}</tbody>
+          </table>
+          <div style="margin-top:8px;display:flex;gap:8px;">
+            ${{u.lgGrupoId?`<button class="btn-dl-txt" onclick="descargarTxtLlegoById('${{u.lgGrupoId}}')">↓ TXT llegada</button>`:''}}
+            ${{u.pedGrupoId?`<button class="hist-del" style="border-color:#2a6b2a;color:#4ade80;" onclick="redownloadTxtGrupoById('${{u.pedGrupoId}}')">↓ TXT pedido</button>`:'ista'}}
+            <button class="hist-del" onclick="eliminarRegistroUnif(${{JSON.stringify(u.allIds)}})">🗑 Eliminar</button>
+          </div>
+        </td>
+      </tr>`;
   }});
+
+  // Eventos simples (urgentes, cartones)
+  filtrSimp.forEach(e=>{{
+    html+=`
+      <tr style="border-bottom:1px solid #1e1e1e;">
+        <td style="color:#555;font-size:11px;white-space:nowrap;padding:8px 10px;">${{e.fecha}}</td>
+        <td style="padding:8px 10px;"><span class="tipo-badge ${{tipoCls[e.tipo]||''}}">${{tipoLabel[e.tipo]||e.tipo}}</span></td>
+        <td style="padding:8px 10px;">${{e.descripcion||''}} ${{e.cod?`<span style="color:#444;font-size:10px;">${{e.cod}}</span>`:''}}</td>
+        <td style="padding:8px 10px;color:#aaa;">${{e.quien||'—'}}</td>
+        <td class="num" style="padding:8px 10px;">${{e.cantidad||'—'}}</td>
+        <td style="padding:8px 10px;" colspan="3"><button class="hist-del" onclick="eliminarHistorial('${{e.id}}')">Eliminar</button></td>
+      </tr>`;
+  }});
+
   document.getElementById('hist-tbody').innerHTML = html;
+}}
+
+function cancelarPedidoHistU(pedGrupoId) {{
+  if (!pedGrupoId) return;
+  const arts = (shared.historial||[]).filter(e=>e.tipo==='pedido'&&(e.grupoId||('p_'+e.fecha))===pedGrupoId);
+  const cods = arts.map(e=>e.cod);
+  if (!confirm(`¿Cancelar el pedido? Se quitarán ${{cods.length}} artículo${{cods.length!==1?'s':''}} del estado pedido.`)) return;
+  shared.pedido_realizado = (shared.pedido_realizado||[]).filter(c=>!cods.includes(c));
+  if (shared.pedido_info) cods.forEach(c=>delete shared.pedido_info[c]);
+  shared.historial = (shared.historial||[]).filter(e=>!(e.tipo==='pedido'&&(e.grupoId||('p_'+e.fecha))===pedGrupoId));
+  saveShared({{pedido_realizado:shared.pedido_realizado,pedido_info:shared.pedido_info,historial:shared.historial}});
+  S.ins.filtrar(); S.cart.filtrar(); renderHistorial();
+}}
+function eliminarRegistroUnif(ids) {{
+  if (!confirm('¿Eliminar este registro del historial?')) return;
+  shared.historial = (shared.historial||[]).filter(e=>!ids.includes(e.id));
+  saveShared({{historial:shared.historial}});
+  renderHistorial();
+}}
+function descargarTxtLlegoById(lgGrupoId) {{
+  const items = (shared.historial||[]).filter(e=>e.tipo==='llego'&&(e.grupoId||('l_'+e.fecha))===lgGrupoId);
+  if (!items.length) return;
+  const prov = items[0].proveedor || '?';
+  const lines = items.map(i=>i.cantidad+'+'+i.cod.toLowerCase()+'!');
+  const blob = new Blob([lines.join('\\n')],{{type:'text/plain'}});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='LLEGO-'+prov.replace(/[^a-zA-Z0-9]/g,'_')+'.txt'; a.click();
+}}
+function redownloadTxtGrupoById(pedGrupoId) {{
+  const items = (shared.historial||[]).filter(e=>e.tipo==='pedido'&&(e.grupoId||('p_'+e.fecha))===pedGrupoId);
+  if (!items.length) return;
+  const prov = items[0].proveedor || '?';
+  const fecha = items[0].fechaEntrega || '';
+  descargarTxtPedido(prov, items.map(i=>{{return{{codigo:i.cod,descripcion:i.descripcion,cantidad:i.cantPed||i.cantidad}}}}), fecha);
 }}
 function toggleDetHistGrupo(rk) {{
   const el = document.getElementById('detg-' + rk);
@@ -1655,8 +1888,10 @@ document.getElementById('llego-modal').addEventListener('click', e=>{{ if(e.targ
 // ── Sección genérica ──────────────────────────────────────────
 function makeSection(id) {{
   const data = DATASETS[id];
-  let filt = data.filter(r => !shared.desuso.includes(r.Codigo) && !(shared.pedido_realizado||[]).includes(r.Codigo));
+  let filt = data.filter(r => !(shared.desuso||[]).includes(r.Codigo));
   let pg = 1, sortCol = -1, sortDir = 1, verConsumo = false;
+  const collapsedProvs = new Set();
+  const expandedEsp   = new Set();  // esporádicos colapsados por defecto; se agrega al expandir
 
   const sel = document.getElementById(id+'-prov');
   (PROVS_MAP[id]||[]).forEach(p => {{
@@ -1668,7 +1903,6 @@ function makeSection(id) {{
     const bus  = document.getElementById(id+'-bus').value.toLowerCase().trim();
     filt = data.filter(r => {{
       if ((shared.desuso||[]).includes(r.Codigo)) return false;
-      if ((shared.pedido_realizado||[]).includes(r.Codigo)) return false;
       const consEfectivo = r.ConsumidoDesdeIngreso>=0 ? r.ConsumidoDesdeIngreso : r.Consumido;
       if (verConsumo && consEfectivo===0) return false;
       if (prov && r.Proveedor!==prov) return false;
@@ -1700,72 +1934,137 @@ function makeSection(id) {{
     pg=1; render();
   }}
 
+  function toggleProv(prov) {{
+    if (collapsedProvs.has(prov)) collapsedProvs.delete(prov);
+    else collapsedProvs.add(prov);
+    render();
+  }}
+
+  function toggleEsp(prov) {{
+    if (expandedEsp.has(prov)) expandedEsp.delete(prov);
+    else expandedEsp.add(prov);
+    render();
+  }}
+
   function render() {{
     const provFilter=document.getElementById(id+'-prov').value;
-    // Urgentes siempre primero
-    const display=[...filt].sort((a,b)=>((isUrgente(b.Codigo)?1:0)-(isUrgente(a.Codigo)?1:0)));
-    const total=display.length, start=(pg-1)*PG, slice=display.slice(start,start+PG);
-    const pages=Math.max(1,Math.ceil(total/PG));
-    document.getElementById(id+'-cnt').textContent=total+' artículo'+(total!==1?'s':'')+(total!==data.length?' (filtrado)':'');
-
-    const HOY = new Date().toISOString().slice(0,10);
-    let html='', curProv=null, inUrgSec=false;
     const agrupar=!provFilter;
-    slice.forEach(r=>{{
-      const isUrg = isUrgente(r.Codigo);
-      const urgInfo = isUrg ? getUrgenteInfo(r.Codigo) : null;
-      if (isUrg && !inUrgSec) {{
-        inUrgSec=true; curProv=null;
+    const HOY=new Date().toISOString().slice(0,10);
+    const esEspRow=r=>(shared.esporadico||[]).includes(r.Codigo)||(r.ConsumidoDesdeIngreso<0&&r.Consumido>0);
+    const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+
+    // Última cantidad pedida por artículo (historial, más reciente primero)
+    const ultPed={{}};
+    (shared.historial||[]).forEach(e=>{{
+      if(e.tipo==='pedido'&&e.cod&&(e.cantidad||0)>0&&!ultPed[e.cod]) ultPed[e.cod]=e.cantidad;
+    }});
+
+    // Orden: urgentes primero, luego por proveedor, luego regulares antes que esporádicos
+    const display=[...filt].sort((a,b)=>{{
+      const ud=(isUrgente(b.Codigo)?1:0)-(isUrgente(a.Codigo)?1:0);
+      if(ud) return ud;
+      if(agrupar){{const pc=String(a.Proveedor).localeCompare(String(b.Proveedor),'es');if(pc)return pc;}}
+      return (esEspRow(a)?1:0)-(esEspRow(b)?1:0);
+    }});
+
+    document.getElementById(id+'-cnt').textContent=display.length+' artículo'+(display.length!==1?'s':'')+(display.length!==data.length?' (filtrado)':'');
+
+    // Construir filas virtuales (headers + artículos)
+    const VR=[];
+    if(display.some(r=>isUrgente(r.Codigo))){{
+      VR.push({{_t:'urgHdr'}});
+      display.filter(r=>isUrgente(r.Codigo)).forEach(r=>VR.push({{_t:'art',r,isEsp:false}}));
+    }}
+    const nonUrg=display.filter(r=>!isUrgente(r.Codigo));
+    if(agrupar){{
+      const byProv={{}};
+      nonUrg.forEach(r=>{{
+        if(!byProv[r.Proveedor]) byProv[r.Proveedor]={{reg:[],esp:[]}};
+        (esEspRow(r)?byProv[r.Proveedor].esp:byProv[r.Proveedor].reg).push(r);
+      }});
+      Object.keys(byProv).sort((a,b)=>a.localeCompare(b,'es')).forEach(prov=>{{
+        const grp=byProv[prov];
+        const isCol=collapsedProvs.has(prov);
+        const tc=grp.reg.concat(grp.esp).reduce((s,x)=>s+x.Consumido,0);
+        VR.push({{_t:'provHdr',prov,tc,isCol}});
+        if(!isCol){{
+          grp.reg.forEach(r=>VR.push({{_t:'art',r,isEsp:false}}));
+          if(grp.esp.length){{
+            const espCol=!expandedEsp.has(prov);  // colapsado por defecto
+            VR.push({{_t:'espHdr',prov,cnt:grp.esp.length,espCol}});
+            if(!espCol) grp.esp.forEach(r=>VR.push({{_t:'art',r,isEsp:true}}));
+          }}
+        }}
+      }});
+    }} else {{
+      nonUrg.forEach(r=>VR.push({{_t:'art',r,isEsp:false}}));
+    }}
+
+    // Paginación sobre artículos visibles únicamente
+    const artIdxs=VR.map((v,i)=>v._t==='art'?i:-1).filter(i=>i>=0);
+    const total=artIdxs.length;
+    const pageSet=new Set(artIdxs.slice((pg-1)*PG,pg*PG));
+    const pages=Math.max(1,Math.ceil(total/PG));
+
+    let html='';
+    VR.forEach((v,idx)=>{{
+      if(v._t==='urgHdr'){{
         html+=`<tr class="group-row group-urg"><td colspan="9">⚡ URGENTES</td></tr>`;
+      }} else if(v._t==='provHdr'){{
+        const arrow=v.isCol?'▶':'▼';
+        html+=`<tr class="group-row" style="cursor:pointer;" data-sec="${{id}}" data-prov-name="${{esc(v.prov)}}" onclick="S[this.dataset.sec].toggleProv(this.dataset.provName)">
+          <td colspan="4"><span style="display:inline-flex;align-items:center;gap:8px;user-select:none;">
+            <span style="color:#22c55e;font-size:15px;font-weight:900;line-height:1;min-width:14px;">${{arrow}}</span>
+            ${{esc(v.prov)}}
+          </span></td>
+          <td class="num">${{fmt(v.tc)}}</td><td colspan="4"></td></tr>`;
+      }} else if(v._t==='espHdr'){{
+        const arrow=v.espCol?'▶':'▼';
+        html+=`<tr class="group-row" style="background:#080e08;cursor:pointer;" data-sec="${{id}}" data-prov-name="${{esc(v.prov)}}" onclick="S[this.dataset.sec].toggleEsp(this.dataset.provName)">
+          <td colspan="9" style="padding:4px 26px;">
+            <span style="display:inline-flex;align-items:center;gap:6px;user-select:none;">
+              <span style="color:#22c55e;font-size:12px;min-width:12px;">${{arrow}}</span>
+              <span style="color:#3a6a3a;font-size:10px;font-weight:700;letter-spacing:.5px;">ESPORÁDICOS (${{v.cnt}})</span>
+            </span>
+          </td></tr>`;
+      }} else if(v._t==='art'){{
+        if(!pageSet.has(idx)) return;
+        const r=v.r;
+        const isUrg=isUrgente(r.Codigo);
+        const urgInfo=isUrg?getUrgenteInfo(r.Codigo):null;
+        const consEfec=r.ConsumidoDesdeIngreso>=0?r.ConsumidoDesdeIngreso:r.Consumido;
+        const sinStock=r.StockActual<=0&&consEfec>0;
+        const sc=sinStock?'warn-stock':(r.StockActual>0?'ok-stock':'');
+        const stmin=(shared.stock_minimo||{{}})[r.Codigo];
+        let stminCls='';
+        if(stmin!==undefined&&stmin>0){{
+          if(r.StockActual<=stmin) stminCls='stmin-bajo';
+          else if(r.StockActual<=stmin*2) stminCls='stmin-alerta';
+        }}
+        const esCritico=r.StockActual<=0||(stmin!==undefined&&stmin>0&&r.StockActual<stmin);
+        const isDone=(shared.pedido_realizado||[]).includes(r.Codigo);
+        const rowCls=isUrg?'urg-row':(isDone?'pedido-done':(esCritico?'row-critico':''));
+        const urgBadge=isUrg?`<span class="badge-urg">⚡ ${{urgInfo&&typeof urgInfo==='object'?urgInfo.quien+' · ×'+urgInfo.cantidad:'URGENTE'}}</span>`:'';
+        const ingBadge=r.UltimoIngreso===HOY?`<span class="badge-ingresado">↑ INGRESADO HOY</span>`:'';
+        const espBadge=(shared.esporadico||[]).includes(r.Codigo)?'<span class="badge-esp">ESP</span>':'';
+        const upVal=ultPed[r.Codigo];
+        const upHtml=upVal?`<span style="color:#60a5fa;font-weight:700;">${{upVal}}</span>`:`<span style="color:#333;">—</span>`;
+        const pedInfo=isDone?((shared.pedido_info||{{}})[r.Codigo]||{{}}):null;
+        const pedBadge=isDone?`<span style="display:inline-block;background:#0a2e0a;color:#4ade80;font-size:9px;font-weight:900;padding:1px 7px;border-radius:2px;letter-spacing:.5px;margin-left:5px;vertical-align:middle;border:1px solid #1a5a1a;">✓ PEDIDO${{pedInfo&&pedInfo.cantidad?' ×'+pedInfo.cantidad:''}}</span>`:'';
+        const dimSt=v.isEsp?'opacity:.65;':'';
+        html+=`<tr data-cod="${{r.Codigo}}" class="${{rowCls}}" style="${{dimSt}}">
+          <td style="font-size:11px;color:#aaa">${{r.Codigo}}</td>
+          <td>${{r.Descripcion}}${{urgBadge}}${{ingBadge}}${{espBadge}}${{pedBadge}}</td>
+          <td><span class="unidad-cell" contenteditable="true" spellcheck="false" data-cod="${{r.Codigo}}" data-field="unidad">${{r.Unidad}}</span></td>
+          <td class="num" title="${{r.ConsumidoDesdeIngreso>=0?'Desde último ingreso MSTOCK':'Sin ingreso registrado en MSTOCK'}}">
+            ${{r.ConsumidoDesdeIngreso>0?fmt(r.ConsumidoDesdeIngreso):(r.ConsumidoDesdeIngreso===0?'<span style="color:#4ade80;font-size:10px;font-weight:900;">0</span>':'<span style="color:#444">—</span>')}}${{r.ConsumoPromDiario>0?`<br><span style="color:#555;font-size:9px;">${{r.ConsumoPromDiario}}/día</span>`:''}}</td>
+          <td class="num ${{sc}} ${{stminCls}}" title="${{r.UltimoIngreso?'Último ingreso: '+r.UltimoIngreso:'Sin ingreso registrado'}}">${{fmt(r.StockActual)}}</td>
+          <td class="num">${{upHtml}}</td>
+          <td class="num"><span class="stmin-cell" contenteditable="true" spellcheck="false" data-cod="${{r.Codigo}}" data-field="stmin"></span></td>
+          <td><span class="nota-cell" contenteditable="true" spellcheck="false" data-cod="${{r.Codigo}}" data-field="logistica"></span></td>
+          <td><span class="nota-cell" contenteditable="true" spellcheck="false" data-cod="${{r.Codigo}}" data-field="compras"></span></td>
+        </tr>`;
       }}
-      if (!isUrg && inUrgSec) {{ inUrgSec=false; curProv=null; }}
-      if(!isUrg && agrupar && r.Proveedor!==curProv){{
-        curProv=r.Proveedor;
-        const tc=filt.filter(x=>x.Proveedor===curProv&&!isUrgente(x.Codigo)).reduce((s,x)=>s+x.Consumido,0);
-        const provPend=filt.filter(x=>x.Proveedor===curProv&&!isUrgente(x.Codigo)&&!(shared.pedido_realizado||[]).includes(x.Codigo)).length>0;
-        const provAttr=curProv.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-        const chkHtml=provPend
-          ?`<input type="checkbox" onclick="event.stopPropagation()" onchange="onCheckProveedor(event,this,'${{id}}')" data-prov="${{provAttr}}" style="width:14px;height:14px;accent-color:var(--accent);cursor:pointer;flex-shrink:0;">`
-          :`<input type="checkbox" disabled style="width:14px;height:14px;opacity:.25;cursor:default;flex-shrink:0;">`;
-        html+=`<tr class="group-row"><td colspan="4">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">
-            ${{chkHtml}} ▼ ${{curProv}}
-          </label></td><td class="num">${{fmt(tc)}}</td><td colspan="4"></td></tr>`;
-      }}
-      const isDone = (shared.pedido_realizado||[]).includes(r.Codigo);
-      const consEfec = r.ConsumidoDesdeIngreso >= 0 ? r.ConsumidoDesdeIngreso : r.Consumido;
-      const sinStock = r.StockActual<=0 && consEfec>0;
-      const sc = sinStock?'warn-stock':(r.StockActual>0?'ok-stock':'');
-      const stmin = (shared.stock_minimo||{{}})[r.Codigo];
-      let stminCls = '';
-      if (stmin!==undefined && stmin>0) {{
-        if (r.StockActual <= stmin) stminCls='stmin-bajo';
-        else if (r.StockActual <= stmin*2) stminCls='stmin-alerta';
-      }}
-      const esCritico = r.StockActual<=0 || (stmin!==undefined && stmin>0 && r.StockActual<stmin);
-      const rowCls = isUrg?'urg-row':(isDone?'pedido-done':(esCritico?'row-critico':''));
-      const urgLabel = urgInfo && typeof urgInfo==='object'
-        ? `${{urgInfo.quien}} · ×${{urgInfo.cantidad}}`
-        : 'URGENTE';
-      const urgBadge      = isUrg?`<span class="badge-urg">⚡ ${{urgLabel}}</span>`:'';
-      const ingresadoBadge = r.UltimoIngreso===HOY?`<span class="badge-ingresado">↑ INGRESADO HOY</span>`:'';
-      html+=`<tr data-cod="${{r.Codigo}}" class="${{rowCls}}">
-        <td style="font-size:11px;color:#aaa">${{r.Codigo}}</td>
-        <td>${{r.Descripcion}}${{urgBadge}}${{ingresadoBadge}}${{(shared.esporadico||[]).includes(r.Codigo)?'<span class="badge-esp">ESP</span>':''}}</td>
-        <td><span class="unidad-cell" contenteditable="true" spellcheck="false" data-cod="${{r.Codigo}}" data-field="unidad">${{r.Unidad}}</span></td>
-        <td class="num" title="${{r.ConsumidoDesdeIngreso>=0?'Desde último ingreso MSTOCK':'Sin ingreso registrado en MSTOCK'}}">
-          ${{r.ConsumidoDesdeIngreso>0
-            ? fmt(r.ConsumidoDesdeIngreso)
-            : (r.ConsumidoDesdeIngreso===0
-                ? '<span style="color:#4ade80;font-size:10px;font-weight:900;">0</span>'
-                : '<span style="color:#444">—</span>')
-          }}${{r.ConsumoPromDiario>0?`<br><span style="color:#555;font-size:9px;">${{r.ConsumoPromDiario}}/día</span>`:''}}</td>
-        <td class="num ${{sc}} ${{stminCls}}" title="${{r.UltimoIngreso?'Último ingreso: '+r.UltimoIngreso:'Sin ingreso registrado'}}">${{fmt(r.StockActual)}}</td>
-        <td class="num"><span class="stmin-cell" contenteditable="true" spellcheck="false" data-cod="${{r.Codigo}}" data-field="stmin"></span></td>
-        <td><span class="nota-cell" contenteditable="true" spellcheck="false" data-cod="${{r.Codigo}}" data-field="logistica"></span></td>
-        <td><span class="nota-cell" contenteditable="true" spellcheck="false" data-cod="${{r.Codigo}}" data-field="compras"></span></td>
-        <td style="text-align:center"><input type="checkbox" ${{isDone?'checked':''}} onchange="onChangePedido(event,'${{r.Codigo}}')" style="width:16px;height:16px;accent-color:var(--ok);cursor:pointer;"></td>
-      </tr>`;
     }});
     document.getElementById(id+'-tbody').innerHTML=html;
     restoreEditable();
@@ -1778,13 +2077,12 @@ function makeSection(id) {{
   }}
 
   function irPag(n){{
-    const pages=Math.max(1,Math.ceil(filt.length/PG));
-    if(n<1||n>pages) return; pg=n; render();
+    if(n<1) return; pg=n; render();
     document.getElementById(id+'-wrap').scrollTop=0;
   }}
 
   function getFilt() {{ return [...filt]; }}
-  return {{filtrar,toggleConsumo,sortBy,render,irPag,getFilt}};
+  return {{filtrar,toggleConsumo,sortBy,render,irPag,getFilt,toggleProv,toggleEsp}};
 }}
 
 // ── Proveedores — orden fijo ───────────────────────────────────
@@ -1858,8 +2156,18 @@ function renderProveedores() {{
   const hoyISO = new Date().toISOString().slice(0,10);
   let html = '<div class="prov-grid">';
   cards.forEach(g => {{
-    const cc = critCnt(g);
-    const consCnt = g.pending.filter(r=>r.ConsumidoDesdeIngreso>0||(r.ConsumidoDesdeIngreso<0&&r.Consumido>0)).length;
+    const allArts = [...g.pending, ...g.ordered];
+    const sinStockCnt = allArts.filter(r =>
+      r.StockActual <= 0 &&
+      !(shared.esporadico||[]).includes(r.Codigo) &&
+      !(r.ConsumidoDesdeIngreso < 0 && r.Consumido > 0)
+    ).length;
+    const urgCnt = allArts.filter(r => (shared.urgente||[]).some(u=>(typeof u==='string'?u:u.cod)===r.Codigo)).length;
+    const fechasIng = allArts.map(r=>r.UltimoIngreso).filter(Boolean).sort();
+    const ultIng = fechasIng.length ? fechasIng[fechasIng.length-1] : null;
+    const diasIng = ultIng ? Math.floor((new Date(hoyISO)-new Date(ultIng))/(86400000)) : null;
+    const ultIngTxt = diasIng===null ? '—' : diasIng===0 ? 'Hoy' : diasIng+'d';
+    const ultIngCls = diasIng===null||diasIng>30 ? 'crit' : diasIng>14 ? '' : 'muted';
     const secLabel = g.secId==='ins'?'INSUMOS':'CARTONES';
     const secCls   = g.secId==='ins'?'ins':'cart';
     const provAttr = g.prov.replace(/&/g,'&amp;').replace(/"/g,'&quot;');
@@ -1896,24 +2204,26 @@ function renderProveedores() {{
         ${{pinBtns}}
       </div>
       <div class="prov-card-stats">
-        <div class="prov-card-stat">
-          <div class="prov-card-stat-val">${{g.pending.length}}</div>
-          <div class="prov-card-stat-lbl">PENDIENTES</div>
+        <div class="prov-card-stat" title="Artículos con stock en 0 o negativo">
+          <div class="prov-card-stat-val ${{sinStockCnt>0?'crit':'muted'}}">${{sinStockCnt}}</div>
+          <div class="prov-card-stat-lbl">SIN STOCK</div>
         </div>
-        <div class="prov-card-stat">
-          <div class="prov-card-stat-val ${{cc>0?'crit':'muted'}}">${{cc}}</div>
-          <div class="prov-card-stat-lbl">CRÍTICOS</div>
+        <div class="prov-card-stat" title="Artículos marcados como urgentes">
+          <div class="prov-card-stat-val ${{urgCnt>0?'crit':'muted'}}">${{urgCnt}}</div>
+          <div class="prov-card-stat-lbl">URGENTES</div>
         </div>
-        <div class="prov-card-stat">
-          <div class="prov-card-stat-val muted">${{consCnt}}</div>
-          <div class="prov-card-stat-lbl">CONSUMO</div>
+        <div class="prov-card-stat" title="Días desde el último ingreso registrado${{ultIng?' ('+ultIng+')':''}}">
+          <div class="prov-card-stat-val ${{ultIngCls}}" style="font-size:${{diasIng!==null&&diasIng<100?'20px':'14px'}};line-height:1.2;">${{ultIngTxt}}</div>
+          <div class="prov-card-stat-lbl">ÚLT. INGRESO</div>
         </div>
       </div>
       ${{orderedHtml}}
+      ${{urgCnt>0 ? `<button onclick="pedirUrgentesProveedor('${{provAttr}}','${{g.secId}}')" style="width:100%;margin-top:8px;background:#2e0808;border:1px solid var(--err);color:var(--err);padding:8px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:900;letter-spacing:.5px;">⚡ PEDIR URGENTES (${{urgCnt}})</button>` : ''}}
       ${{g.pending.length>0 ? `<div style="display:flex;gap:6px;margin-top:8px;">
-        <button class="btn-ver-detalle" style="flex:1;" onclick="verDetalleProv('${{provAttr}}','${{g.secId}}')">🔍 VER DETALLE</button>
+        <button class="btn-ver-detalle" style="flex:1;" onclick="verDetalleProv('${{provAttr}}','${{g.secId}}')">🔍 DETALLE</button>
         <button class="btn-pedir" style="flex:2;" onclick="pedirProveedor('${{provAttr}}','${{g.secId}}')">📦 PEDIR</button>
       </div>` : ''}}
+      <button class="btn-historial" onclick="verHistorialProv('${{provAttr}}')">📋 HISTORIAL DE PEDIDOS</button>
     </div>`;
   }});
   html += '</div>';
@@ -1967,13 +2277,30 @@ function confirmarLlegoGrp() {{
   const nota = document.getElementById('lgm-nota').value.trim();
   let count = 0;
   const grupoId = 'lg_' + Date.now().toString() + Math.random().toString(36).slice(2,6);
+  const fechaLlegada = new Date().toISOString().slice(0,10);
   const dragonLines = [];
+  const reposiciones = [];
   arts.forEach(r => {{
     const chk = document.getElementById('lgm-chk-'+r.Codigo);
     if (!chk?.checked) return;
     const cant = parseInt(document.getElementById('lgm-q-'+r.Codigo)?.value)||0;
     if (cant <= 0) return;
-    addHistorial({{ tipo:'llego', cod:r.Codigo, descripcion:r.Descripcion, quien:'', cantidad:cant, nota, grupoId, proveedor:prov }});
+    const pedInfo = (shared.pedido_info||{{}})[r.Codigo] || {{}};
+    reposiciones.push({{
+      id: grupoId + '_' + r.Codigo,
+      grupoId,
+      proveedor: prov,
+      codigo: r.Codigo,
+      descripcion: r.Descripcion,
+      cantPedida: pedInfo.cantidad || 0,
+      cantRecibida: cant,
+      fechaPedido: pedInfo.fecha_pedido || null,
+      fechaEstimada: pedInfo.fecha_entrega || null,
+      fechaLlegada,
+      nota,
+    }});
+    const pedidoGrupoId = pedInfo.grupoId || '';
+    addHistorial({{ tipo:'llego', cod:r.Codigo, descripcion:r.Descripcion, quien:pedInfo.quien||'', cantidad:cant, nota, grupoId, proveedor:prov, pedidoGrupoId }});
     shared.pedido_realizado = (shared.pedido_realizado||[]).filter(c=>c!==r.Codigo);
     shared.urgente = (shared.urgente||[]).filter(u=>(typeof u==='string'?u:u.cod)!==r.Codigo);
     if (shared.pedido_info) delete shared.pedido_info[r.Codigo];
@@ -1981,7 +2308,7 @@ function confirmarLlegoGrp() {{
     count++;
   }});
   if (!count) {{ cerrarModalLlegoGrp(); return; }}
-  saveShared({{ pedido_realizado:shared.pedido_realizado, pedido_info:shared.pedido_info, urgente:shared.urgente, historial:shared.historial }});
+  saveShared({{ pedido_realizado:shared.pedido_realizado, pedido_info:shared.pedido_info, urgente:shared.urgente, historial:shared.historial, reposiciones }});
   cerrarModalLlegoGrp();
   S.ins.filtrar(); S.cart.filtrar();
   renderPedidoSections(); actualizarBadgesUrgente();
@@ -2042,6 +2369,55 @@ function exportarCSV(id) {{
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }}
 
+// ── Historial proveedor ───────────────────────────────────────
+function verHistorialProv(prov) {{
+  document.getElementById('hpm-prov').textContent = prov;
+  const hist = (shared.historial||[]).filter(e =>
+    e.proveedor === prov && (e.tipo==='pedido' || e.tipo==='llego')
+  );
+  const grupos = {{}};
+  hist.forEach(e => {{
+    const gk = e.grupoId || (e.tipo+'_'+e.fecha);
+    if (!grupos[gk]) grupos[gk] = {{tipo:e.tipo, fecha:e.fecha, items:[], total:0}};
+    grupos[gk].items.push({{cod:e.cod, desc:e.descripcion, cant:e.cantidad||0}});
+    grupos[gk].total += (e.cantidad||0);
+  }});
+  const rows = Object.values(grupos).sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  document.getElementById('hpm-sub').textContent = rows.length+' evento'+(rows.length!==1?'s':'')+' registrado'+(rows.length!==1?'s':'');
+  if (!rows.length) {{
+    document.getElementById('hpm-tbody').innerHTML = '<tr><td colspan="4" style="color:#555;padding:20px;text-align:center;">Sin historial registrado para este proveedor.</td></tr>';
+  }} else {{
+    document.getElementById('hpm-tbody').innerHTML = rows.map(g => {{
+      const tipoBadge = g.tipo==='pedido'
+        ? '<span class="tipo-badge tipo-pedido">PEDIDO</span>'
+        : '<span class="tipo-badge tipo-llego">✓ LLEGÓ</span>';
+      const subRows = g.items.map(i=>`
+        <tr>
+          <td style="color:#444;padding:2px 8px;font-size:11px;">${{i.cod||''}}</td>
+          <td style="padding:2px 8px;font-size:11px;">${{i.desc||''}}</td>
+          <td style="text-align:right;padding:2px 8px;font-size:11px;">${{i.cant}}</td>
+        </tr>`).join('');
+      return `
+        <tr style="cursor:pointer;border-bottom:1px solid #1e1e1e;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display?'':'table-row'">
+          <td style="color:#555;font-size:11px;white-space:nowrap;padding:8px 10px;">${{g.fecha}}</td>
+          <td style="padding:8px 10px;">${{tipoBadge}}</td>
+          <td style="padding:8px 10px;color:#aaa;font-size:11px;">${{g.items.length}} art. <span style="color:#444;">▾</span></td>
+          <td style="text-align:right;padding:8px 10px;font-weight:700;color:#f0f0f0;">${{fmt(g.total)}}</td>
+        </tr>
+        <tr style="display:none;background:#0d0d0d;">
+          <td colspan="4" style="padding:4px 20px 10px;">
+            <table style="width:100%;border-collapse:collapse;">${{subRows}}</table>
+          </td>
+        </tr>`;
+    }}).join('');
+  }}
+  document.getElementById('hist-prov-modal').classList.add('open');
+}}
+function cerrarHistProv() {{
+  document.getElementById('hist-prov-modal').classList.remove('open');
+}}
+document.getElementById('hist-prov-modal').addEventListener('click', e=>{{ if(e.target===e.currentTarget) cerrarHistProv(); }});
+
 // ── Detalle proveedor ─────────────────────────────────────────
 let detalleProv = null;
 function verDetalleProv(prov, secId) {{
@@ -2077,6 +2453,7 @@ function cerrarDetalleProv() {{
 // ── Init ──────────────────────────────────────────────────────
 const S = {{}};
 loadShared().then(() => {{
+  migrarHistorialPedidoLlego();  // fusionar llegó con pedido en datos existentes
   S.ins  = makeSection('ins');
   S.cart = makeSection('cart');
   renderProveedores();
@@ -2084,7 +2461,6 @@ loadShared().then(() => {{
   S.cart.render();
   poblarSelectCartones();
   renderSolicitudes();
-  renderPedidoSections();
   actualizarBadgeTab();
   actualizarBadgesUrgente();
   renderDesusoTables();
@@ -2108,6 +2484,9 @@ setInterval(async () => {{
       s: nuevo.solicitudes_cartones, h: nuevo.historial
     }});
     if (snap2 === snap) return;   // nada cambió
+    // Preservar pedidos locales no confirmados en servidor antes de sobrescribir
+    const _localPed     = (shared.pedido_realizado || []).slice();
+    const _localPedInfo = Object.assign({{}}, shared.pedido_info || {{}});
     Object.assign(shared, nuevo);
     shared.urgente          = shared.urgente          || [];
     shared.desuso           = shared.desuso           || [];
@@ -2119,6 +2498,15 @@ setInterval(async () => {{
     shared.notas            = shared.notas            || {{}};
     shared.solicitudes_cartones = shared.solicitudes_cartones || [];
     shared.historial        = shared.historial        || [];
+    // Merge: agregar pedidos locales que el servidor aún no tiene (evita pérdida por race condition)
+    const _serverPed = new Set(shared.pedido_realizado);
+    _localPed.forEach(c => {{
+      if (!_serverPed.has(c)) {{
+        _serverPed.add(c);
+        shared.pedido_realizado.push(c);
+        if (_localPedInfo[c] && !shared.pedido_info[c]) shared.pedido_info[c] = _localPedInfo[c];
+      }}
+    }});
     if (S.ins)  S.ins.filtrar();
     if (S.cart) S.cart.filtrar();
     renderPedidoSections();
